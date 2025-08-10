@@ -1,19 +1,27 @@
-import { Controller, Post, Body, Response } from '@nestjs/common';
+import { Controller, Post, Body, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { NfseDto } from '../dto/nfse.dto';
 import { NfseService } from '../services/nfse.service';
-import { Response as Res } from 'express';
+import { PdfGenerationMode } from '../../shared/pdf/pdf.service';
+import { NfseControllerHelpers as H } from '../helpers/nfse-controller.helpers';
 
 @Controller('nfse')
 export class NfseController {
   constructor(private readonly nfseService: NfseService) {}
 
   @Post('gerar-pdf')
-  async gerarPdf(@Body() nfseDto: NfseDto, @Response() res: Res) {
-    const pdfBuffer = await this.nfseService.processarNfse(nfseDto);
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': 'attachment; filename=nota_fiscal.pdf',
-    });
-    res.send(pdfBuffer);
+  async gerarPdf(@Body() body: NfseDto, @Res() res: Response) {
+    const mode: PdfGenerationMode = H.resolveMode(body);
+    const zipName = H.resolveZipName(body);
+
+    const buffer = await H.generateBuffer(
+      this.nfseService,
+      body,
+      mode,
+      zipName,
+    );
+
+    H.setResponseHeaders(res, mode, zipName);
+    return H.sendBuffer(res, buffer);
   }
 }

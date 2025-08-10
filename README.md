@@ -1,98 +1,204 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# NFSe PDF Generator (NestJS)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Gera PDF(s) de NFS-e a partir de um XML — com opção de:
+- **um único PDF** contendo **várias páginas** (uma por nota), ou
+- **um ZIP** contendo **um PDF por nota**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Usa **NestJS**, **pdfmake** (server-side) e **JSZip**. O layout é montado por classes auxiliares (builder) para manter o código organizado e fácil de evoluir.
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## ✨ Funcionalidades
 
-## Project setup
+- Recebe o **XML da NFS-e** (lote com uma ou várias `<InfNfse>`).
+- **`mode: "single"`** → um PDF com N páginas.
+- **`mode: "multiple"`** → ZIP com 1 PDF por nota.
+- Suporte a **logo** no cabeçalho (arquivo local ou dataURL).
+- Layout “Fortaleza-like”, modularizado no **`NfseLayoutBuilder`**.
+- Tipagens separadas para **NFS-e** e **pdfmake**.
 
-```bash
-$ yarn install
+---
+
+## 🧱 Stack
+
+- **Node.js** 18+
+- **NestJS**
+- **pdfmake** (via `pdfmake/src/printer`)
+- **xml2js**
+- **JSZip**
+- **TypeScript / ESLint**
+
+---
+
+## 📁 Estrutura (trecho relevante)
+
+```
+src/
+  assets/
+    logo-prefeitura.png
+  modules/
+    nfse/
+      controller/nfse.controller.ts
+      services/nfse.service.ts
+      types/nfse.types.ts          // Tipos da NFS-e
+      dto/nfse.dto.ts
+    shared/
+      pdf/
+        pdf.service.ts             // Orquestra pdfmake + builder + zip
+        layout/
+          nfse-layout.builder.ts   // Monta o conteúdo/estilo do PDF
+        types/
+          pdfmake.types.ts         // Tipos do pdfmake (server-side)
 ```
 
-## Compile and run the project
+---
+
+## ⚙️ Instalação & Execução
 
 ```bash
-# development
-$ yarn run start
+# 1) Instale as dependências
+npm i
 
-# watch mode
-$ yarn run start:dev
+# 2) Ambiente de dev
+npm run start:dev
 
-# production mode
-$ yarn run start:prod
+# 3) Build
+npm run build
+
+# 4) Produção
+npm run start:prod
 ```
 
-## Run tests
+---
+
+## 🖼️ Configurando a logo (assets)
+
+Coloque sua logo em `src/assets/logo-prefeitura.png` (ou outro nome/caminho de sua preferência).
+
+Garanta que os **assets** sejam copiados para `dist/` durante o build:
+
+**`nest-cli.json`**
+```json
+{
+  "compilerOptions": {
+    "assets": [
+      { "include": "assets/**/*", "outDir": "dist/assets" }
+    ],
+    "watchAssets": true
+  }
+}
+```
+
+> Em runtime, o serviço resolve o caminho de `assets` tanto em **dev** (`src/assets/...`) quanto em **prod** (`dist/assets/...`). Se preferir, você pode enviar um **dataURL** no lugar do caminho de arquivo.
+
+---
+
+## 🌐 API
+
+### Endpoint
+```
+POST /nfse/gerar-pdf
+Content-Type: application/json
+```
+
+### Body
+
+```ts
+type BodyWithOptions = {
+  xml: string;                 // XML bruto com <Nfse>...</Nfse>
+  mode?: "single" | "multiple"; // default: "single"
+  zipName?: string;             // nome do arquivo .zip (quando mode="multiple")
+}
+```
+
+### Respostas
+
+- `mode = "single"`  
+  - `200 OK`  
+  - `Content-Type: application/pdf`  
+  - `Content-Disposition: inline; filename="notas.pdf"`
+
+- `mode = "multiple"`  
+  - `200 OK`  
+  - `Content-Type: application/zip`  
+  - `Content-Disposition: attachment; filename="<zipName>"`
+
+---
+
+## 🧪 Exemplos com cURL
+
+> **Dica:** Como o XML vai dentro de uma *string JSON*, **escape** as aspas duplas (`\"`) — ou use um arquivo `payload.json` + `--data-binary`.
+
+### 1) Um único PDF (várias páginas) — `mode: "single"`
+```bash
+curl -X POST   http://localhost:3000/nfse/gerar-pdf   -H "Content-Type: application/json"   -d '{
+    "xml": "<Nfse>...</Nfse>",
+    "mode": "single"
+  }'   -o notas.pdf
+```
+
+### 2) Um ZIP com 1 PDF por nota — `mode: "multiple"`
+```bash
+curl -X POST   http://localhost:3000/nfse/gerar-pdf   -H "Content-Type: application/json"   -d '{
+    "xml": "<Nfse>...</Nfse>",
+    "mode": "multiple",
+    "zipName": "lote-notas.zip"
+  }'   -o lote-notas.zip
+```
+
+### Alternativa com `payload.json`
+Salve um arquivo `payload.json`:
+```json
+{
+  "xml": "<Nfse>...</Nfse>",
+  "mode": "single"
+}
+```
+
+E envie com:
+```bash
+curl -X POST http://localhost:3000/nfse/gerar-pdf   -H "Content-Type: application/json"   --data-binary @payload.json   -o notas.pdf
+```
+
+---
+
+## 🧩 Internals (resumo)
+
+- **`NfseService`**  
+  Faz o parse do XML (xml2js), normaliza a lista de notas e chama o `PdfService`.
+
+- **`PdfService`**  
+  Inicializa o pdfmake, monta o **docDefinition** via `NfseLayoutBuilder` e:
+  - em **`mode: "single"`**: retorna 1 **Buffer** de PDF;
+  - em **`mode: "multiple"`**: gera vários PDFs e devolve um **ZIP (Buffer)** com todos os arquivos (JSZip).
+
+- **`NfseLayoutBuilder`**  
+  Responsável por **layout/estilos** e conteúdo.
+
+---
+
+## 🛠️ Lint/Format
 
 ```bash
-# unit tests
-$ yarn run test
-
-# e2e tests
-$ yarn run test:e2e
-
-# test coverage
-$ yarn run test:cov
+npm run lint
+npm run format
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## ❗ Troubleshooting
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+- **`ENOENT: no such file or directory, open '.../dist/assets/logo-prefeitura.png'`**  
+  Garanta que:
+  - o arquivo existe em `src/assets/logo-prefeitura.png`;
+  - o `nest-cli.json` tem a configuração de **assets** (vide acima);
+  - em produção, o caminho resolvido aponte para `dist/assets/...`.
 
-```bash
-$ yarn install -g @nestjs/mau
-$ mau deploy
-```
+- **JSON com XML**  
+  Se der erro de parsing por causa de aspas, prefira o **`payload.json`** + `--data-binary` ou escape todas as aspas duplas (`\"`) no XML.
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## 📄 Licença
 
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+MIT — sinta-se à vontade para usar e adaptar.
