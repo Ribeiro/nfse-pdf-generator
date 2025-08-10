@@ -80,13 +80,18 @@ Garanta que os **assets** sejam copiados para `dist/` durante o build:
 **`nest-cli.json`**
 ```json
 {
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
   "compilerOptions": {
+    "deleteOutDir": true,
     "assets": [
-      { "include": "assets/**/*", "outDir": "dist/assets" }
+      { "include": "assets/**/*", "outDir": "dist" }
     ],
     "watchAssets": true
   }
 }
+
 ```
 
 > Em runtime, o serviço resolve o caminho de `assets` tanto em **dev** (`src/assets/...`) quanto em **prod** (`dist/assets/...`). Se preferir, você pode enviar um **dataURL** no lugar do caminho de arquivo.
