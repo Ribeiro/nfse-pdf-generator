@@ -21,7 +21,7 @@ Usa **NestJS**, **pdfmake** (server-side) e **JSZip**. O layout é montado por c
 
 ## 🧱 Stack
 
-- **Node.js** 18+
+- **Node.js** 22+
 - **NestJS**
 - **pdfmake** (via `pdfmake/src/printer`)
 - **xml2js**
