@@ -11,7 +11,6 @@ import JSZip from 'jszip';
 export type PdfGenerationMode = 'single' | 'multiple';
 
 export interface GerarPdfOptions {
-  logo?: string;
   mode?: PdfGenerationMode;
   zipName?: string;
   filenameFor?: (nota: NfseData, index: number) => string;
@@ -29,7 +28,6 @@ export class PdfService {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const PdfPrinterCtor = require('pdfmake') as PdfPrinterConstructor;
 
-      // 🔽 usa o dicionário de fontes centralizado no builder
       this.printer = new PdfPrinterCtor(NfseLayoutBuilder.fonts);
 
       this.isInitialized = true;
@@ -64,10 +62,17 @@ export class PdfService {
     });
   }
 
+  private sanitizeFilenamePart(s: string): string {
+    return s.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  }
+
   private defaultFilenameFor(nota: NfseData, index: number): string {
-    const numero = Array.isArray(nota.Numero) ? nota.Numero[0] : nota.Numero;
-    const safe = (numero || `${index + 1}`).toString().replace(/[^\w.-]/g, '_');
-    return `nfse-${safe}.pdf`;
+    const numero =
+      nota?.ChaveNFe?.NumeroNFe ??
+      nota?.ChaveRPS?.NumeroRPS ??
+      String(index + 1);
+
+    return `nfse-${this.sanitizeFilenamePart(numero)}.pdf`;
   }
 
   async gerarPdf(
@@ -83,7 +88,7 @@ export class PdfService {
     this.initializePdfMake();
 
     const mode: PdfGenerationMode = opts.mode ?? 'single';
-    const builder = new NfseLayoutBuilder({ logo: opts.logo });
+    const builder = new NfseLayoutBuilder();
 
     if (mode === 'single') {
       const docDefinition = builder.buildDocument(nfseDataList);

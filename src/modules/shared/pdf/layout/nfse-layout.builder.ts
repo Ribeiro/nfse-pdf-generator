@@ -1,4 +1,3 @@
-// src/modules/shared/pdf/layout/nfse-layout.builder.ts
 import { NfseData } from 'src/modules/nfse/types/nfse.types';
 import type {
   FontDictionary,
@@ -6,37 +5,128 @@ import type {
 } from '../types/pdfmake.types';
 import { nfseStyles } from './nfse-styles';
 import { MunicipioResolver } from './municipio.resolver';
+import type { Content, TableLayout } from 'pdfmake/interfaces';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface BuildOptions {
-  logo?: string;
   header?: {
-    orgName?: string; // se não vier, cai no fallback com nome do município (IBGE)
+    orgName?: string;
     deptName?: string;
     docTitle?: string;
   };
 }
 
-type ValoresObj = {
-  ValorServicos?: string | string[];
-  ValorDeducoes?: string | string[];
-  ValorPis?: string | string[];
-  ValorCofins?: string | string[];
-  ValorInss?: string | string[];
-  ValorIr?: string | string[];
-  ValorCsll?: string | string[];
-  IssRetido?: string | string[];
-  ValorIss?: string | string[];
-  OutrasRetencoes?: string | string[];
-  BaseCalculo?: string | string[];
-  Aliquota?: string | string[];
-  ValorLiquidoNfse?: string | string[];
-  ValorIssRetido?: string | string[];
-  DescontoCondicionado?: string | string[];
-  DescontoIncondicionado?: string | string[];
-};
+type MarginsTuple = [number, number, number, number];
+
+type LayoutNode = Readonly<{
+  table?: Readonly<{
+    body?: ReadonlyArray<ReadonlyArray<unknown>>;
+    widths?: ReadonlyArray<string | number>;
+  }>;
+}>;
 
 export class NfseLayoutBuilder {
-  // Dicionário de fontes centralizado e tipado
+  private static readonly NUMBER_BOX_WIDTH = 140;
+
+  private static readonly headerLayout: TableLayout = {
+    hLineWidth: (i: number, node: unknown) => {
+      const rows = NfseLayoutBuilder.tableRowsCount(node);
+      return i === 0 || i === rows ? 1 : 0;
+    },
+    vLineWidth: (i: number, node: unknown) => {
+      const cols = NfseLayoutBuilder.tableColsCount(node);
+      return i === 0 || i === cols || i === cols - 1 ? 1 : 0;
+    },
+    hLineColor: () => '#BFBFBF',
+    vLineColor: () => '#BFBFBF',
+    paddingLeft: () => 8,
+    paddingRight: () => 8,
+    paddingTop: () => 6,
+    paddingBottom: () => 6,
+  };
+
+  private static readonly numberInnerLayout: TableLayout = {
+    hLineWidth: (i: number) => {
+      return i === 1 ? 1 : 0;
+    },
+    vLineWidth: () => 0, // sem linhas verticais internas
+    hLineColor: () => '#BFBFBF',
+    paddingLeft: () => 6,
+    paddingRight: () => 6,
+    paddingTop: () => 5,
+    paddingBottom: () => 5,
+  };
+
+  private static readonly headerLogo = {
+    colWidth: 100,
+    maxHeight: 60,
+    hPadding: 0,
+  };
+
+  private static readonly A4 = { width: 595.28, height: 841.89 };
+  private static readonly margins = {
+    left: 20,
+    top: 20,
+    right: 20,
+    bottom: 28,
+  };
+  private static readonly qrSize = 80;
+
+  private static is2DArray(
+    val: unknown,
+  ): val is ReadonlyArray<ReadonlyArray<unknown>> {
+    return Array.isArray(val) && val.every((r) => Array.isArray(r));
+  }
+
+  private static tableRowsCount(node: unknown): number {
+    const t = (node as LayoutNode).table;
+    const body = t?.body;
+    return Array.isArray(body) ? body.length : 0;
+  }
+
+  private static tableColsCount(node: unknown): number {
+    const t = (node as LayoutNode).table;
+    const widths = t?.widths;
+    if (Array.isArray(widths)) return widths.length;
+
+    const bodyUnknown: unknown = t?.body;
+    if (NfseLayoutBuilder.is2DArray(bodyUnknown) && bodyUnknown.length > 0) {
+      return bodyUnknown[0].length;
+    }
+    return 0;
+  }
+
+  private static readonly outerBoxLayout: TableLayout = {
+    hLineWidth: (i: number, node: unknown) => {
+      const rows = NfseLayoutBuilder.tableRowsCount(node);
+      return i === 0 || i === rows ? 1 : 0;
+    },
+    vLineWidth: (i: number, node: unknown) => {
+      const cols = NfseLayoutBuilder.tableColsCount(node);
+      return i === 0 || i === cols ? 1 : 0;
+    },
+    hLineColor: () => '#BFBFBF',
+    vLineColor: () => '#BFBFBF',
+    paddingLeft: () => 8,
+    paddingRight: () => 8,
+    paddingTop: () => 6,
+    paddingBottom: () => 6,
+  };
+
+  private static readonly gridNoOuterLayout: TableLayout = {
+    hLineWidth: (i: number, node: unknown) => {
+      const rows = NfseLayoutBuilder.tableRowsCount(node);
+      return i === 0 || i === rows ? 0 : 1;
+    },
+    vLineWidth: (i: number, node: unknown) => {
+      const cols = NfseLayoutBuilder.tableColsCount(node);
+      return i === 0 || i === cols ? 0 : 1;
+    },
+    hLineColor: () => '#E0E0E0',
+    vLineColor: () => '#E0E0E0',
+  };
+
   public static readonly fonts: FontDictionary = {
     Helvetica: {
       normal: 'Helvetica',
@@ -60,68 +150,144 @@ export class NfseLayoutBuilder {
 
   constructor(private readonly opts: BuildOptions = {}) {}
 
-  private first(value: string | string[] | undefined): string {
-    if (!value) return 'Não informado';
-    return Array.isArray(value) ? value[0] : value;
+  private first(value?: string): string {
+    const v = (value ?? '').toString().trim();
+    return v.length > 0 ? v : 'Não informado';
   }
 
-  private getPrestadorData(prestador: NfseData['PrestadorServico']) {
-    if (Array.isArray(prestador)) {
-      return {
-        razaoSocial: this.first(prestador[0]?.RazaoSocial),
-        cnpj: this.first(prestador[0]?.IdentificacaoPrestador?.[0]?.Cnpj),
-      };
+  private getPrestadorData(n: NfseData) {
+    const razaoSocial = this.first(n.RazaoSocialPrestador);
+    const doc = n.CPFCNPJPrestador?.CNPJ ?? n.CPFCNPJPrestador?.CPF;
+    return { razaoSocial, cnpj: this.first(doc) };
+  }
+
+  private getTomadorData(n: NfseData) {
+    const razaoSocial = this.first(n.RazaoSocialTomador);
+    const doc = n.CPFCNPJTomador?.CNPJ ?? n.CPFCNPJTomador?.CPF;
+    return { razaoSocial, cnpj: this.first(doc) };
+  }
+
+  private getValores(n: NfseData) {
+    return {
+      valorServicos: this.first(n.ValorServicos),
+      valorTotalRecebido: this.first(n.ValorTotalRecebido),
+      aliquota: this.first(n.AliquotaServicos),
+      valorIss: this.first(n.ValorISS),
+    };
+  }
+
+  private formatEnderecoPrestador(n: NfseData) {
+    const end = n.EnderecoPrestador;
+    const tipoLog = this.first(end?.TipoLogradouro);
+    const log = this.first(end?.Logradouro);
+    const num = this.first(end?.NumeroEndereco);
+    const bairro = this.first(end?.Bairro);
+    const municipio = this.first(end?.Cidade); // IBGE
+    const uf = this.first(end?.UF);
+    const cep = this.first(end?.CEP);
+
+    const logCompleto = [tipoLog, log]
+      .filter((s) => s !== 'Não informado')
+      .join(' ')
+      .trim();
+    let endereco = logCompleto.length ? logCompleto : 'Não informado';
+    if (num !== 'Não informado')
+      endereco += (endereco !== 'Não informado' ? ', ' : '') + num;
+
+    return { endereco, bairro, municipio, uf, cep };
+  }
+
+  private formatEnderecoTomador(n: NfseData) {
+    const end = n.EnderecoTomador;
+    const tipoLog = this.first(end?.TipoLogradouro);
+    const log = this.first(end?.Logradouro);
+    const num = this.first(end?.NumeroEndereco);
+    const comp = this.first(end?.ComplementoEndereco);
+    const bairro = this.first(end?.Bairro);
+    const municipio = this.first(end?.Cidade); // IBGE
+    const uf = this.first(end?.UF);
+    const cep = this.first(end?.CEP);
+
+    const logCompleto = [tipoLog, log]
+      .filter((s) => s !== 'Não informado')
+      .join(' ')
+      .trim();
+    let endereco = logCompleto.length ? logCompleto : 'Não informado';
+    if (num !== 'Não informado')
+      endereco += (endereco !== 'Não informado' ? ', ' : '') + num;
+    if (comp !== 'Não informado') endereco += ' - ' + comp;
+
+    return { endereco, bairro, municipio, uf, cep };
+  }
+
+  private getQrAbsolutePosition() {
+    const w = NfseLayoutBuilder.A4.width;
+    const h = NfseLayoutBuilder.A4.height;
+    const { right, bottom } = NfseLayoutBuilder.margins;
+    const size = NfseLayoutBuilder.qrSize;
+    return { x: w - right - size, y: h - bottom - size };
+  }
+
+  private normalizeB64(s: string): string {
+    let t = s.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = t.length % 4;
+    if (pad) t += '='.repeat(4 - pad);
+    return t;
+  }
+
+  private decodeBase64ToUtf8(b64: string): string {
+    const g = globalThis as unknown as {
+      Buffer?: typeof import('buffer').Buffer;
+      atob?: (data: string) => string;
+    };
+
+    try {
+      if (g.Buffer) {
+        return g.Buffer.from(this.normalizeB64(b64), 'base64').toString(
+          'utf-8',
+        );
+      }
+    } catch {
+      /* ignore */
     }
-    return {
-      razaoSocial: this.first(prestador.RazaoSocial),
-      cnpj: this.first(prestador.IdentificacaoPrestador?.Cnpj),
-    };
-  }
 
-  private getTomadorData(tomador: NfseData['TomadorServico']) {
-    if (Array.isArray(tomador)) {
-      return {
-        razaoSocial: this.first(tomador[0]?.RazaoSocial),
-        cnpj: this.first(
-          tomador[0]?.IdentificacaoTomador?.[0]?.CpfCnpj?.[0]?.Cnpj ??
-            tomador[0]?.IdentificacaoTomador?.[0]?.CpfCnpj?.[0]?.Cpf,
-        ),
-      };
+    try {
+      if (typeof g.atob === 'function') {
+        const bin = g.atob(this.normalizeB64(b64));
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        if (typeof TextDecoder !== 'undefined') {
+          return new TextDecoder('utf-8').decode(bytes);
+        }
+        return bin;
+      }
+    } catch {
+      /* ignore */
     }
-    return {
-      razaoSocial: this.first(tomador.RazaoSocial),
-      cnpj: this.first(
-        tomador.IdentificacaoTomador?.CpfCnpj?.Cnpj ??
-          tomador.IdentificacaoTomador?.CpfCnpj?.Cpf,
-      ),
-    };
+
+    return b64;
   }
 
-  private getValores(servico: NfseData['Servico']) {
-    const s = Array.isArray(servico) ? servico[0] : servico;
-    const raw = s?.Valores as unknown as ValoresObj | ValoresObj[] | undefined;
-    const v = Array.isArray(raw) ? raw[0] : raw;
+  private buildQrNode(assinatura?: string): Content | null {
+    const raw = this.first(assinatura);
+    if (raw === 'Não informado') return null;
 
-    return {
-      valorServicos: this.first(v?.ValorServicos),
-      baseCalculo: this.first(v?.BaseCalculo),
-      aliquota: this.first(v?.Aliquota),
-      valorIss: this.first(v?.ValorIss),
-      issRetido: this.first(v?.IssRetido),
-      descontos: this.first(v?.DescontoIncondicionado),
-      deducoes: this.first(v?.ValorDeducoes),
-      valorLiquido: this.first(v?.ValorLiquidoNfse),
+    const decoded = this.decodeBase64ToUtf8(raw).trim();
+    const qrValue = decoded.length > 0 ? decoded : raw;
+
+    const pos = this.getQrAbsolutePosition();
+    const node: Content = {
+      qr: qrValue,
+      fit: NfseLayoutBuilder.qrSize,
+      absolutePosition: { x: pos.x, y: pos.y },
     };
+    return node;
   }
 
-  private sectionHeader(n: NfseData) {
-    const numeroNfse = this.first(n.Numero);
-
-    const org = Array.isArray(n.OrgaoGerador)
-      ? n.OrgaoGerador[0]
-      : n.OrgaoGerador;
+  private sectionHeader(n: NfseData): Content {
+    const numeroNfse = this.first(n.ChaveNFe?.NumeroNFe);
     const municipioNomeRaw = MunicipioResolver.resolveName(
-      org?.CodigoMunicipio,
+      n.EnderecoPrestador?.Cidade,
     );
     const municipioNome =
       municipioNomeRaw && municipioNomeRaw !== 'Não informado'
@@ -129,23 +295,32 @@ export class NfseLayoutBuilder {
         : 'SEU MUNICÍPIO';
 
     const orgName =
-      this.opts.header?.orgName ?? `PREFEITURA MUNICIPAL DE ${municipioNome}`;
+      this.opts.header?.orgName ??
+      `PREFEITURA MUNICIPAL DE ${municipioNome.toUpperCase()}`;
     const deptName =
       this.opts.header?.deptName ?? 'SECRETARIA MUNICIPAL DAS FINANÇAS';
     const docTitle =
       this.opts.header?.docTitle ?? 'NOTA FISCAL ELETRÔNICA DE SERVIÇO - NFS-e';
 
+    const logoFitWidth =
+      NfseLayoutBuilder.headerLogo.colWidth -
+      NfseLayoutBuilder.headerLogo.hPadding * 2;
+
     return {
-      margin: [0, 0, 0, 10],
+      margin: [0, 0, 0, 10] as MarginsTuple,
       table: {
-        widths: [90, '*', 130],
+        widths: [
+          NfseLayoutBuilder.headerLogo.colWidth,
+          '*',
+          NfseLayoutBuilder.NUMBER_BOX_WIDTH,
+        ],
         body: [
           [
             {
-              image: this.opts.logo || undefined,
-              width: 70,
-              height: 50,
+              image: this.loadLogoDataUrl(n.EnderecoPrestador?.Cidade ?? ''),
+              fit: [logoFitWidth, NfseLayoutBuilder.headerLogo.maxHeight],
               alignment: 'left',
+              margin: [0, 0, 0, 0],
               border: [false, false, false, false],
             },
             {
@@ -156,19 +331,21 @@ export class NfseLayoutBuilder {
                 {
                   text: docTitle,
                   style: 'title',
+                  fontSize: 11,
+                  lineHeight: 1.1,
                   alignment: 'center',
-                  margin: [0, 2, 0, 0],
+                  margin: [0, 2, 0, 0] as MarginsTuple,
                 },
               ],
             },
             {
-              layout: 'lightHorizontalLines',
+              layout: NfseLayoutBuilder.numberInnerLayout,
               table: {
                 widths: ['*'],
                 body: [
                   [
                     {
-                      text: 'Número da NFS-e',
+                      text: 'Número',
                       style: 'boxHeader',
                       alignment: 'center',
                     },
@@ -186,52 +363,58 @@ export class NfseLayoutBuilder {
           ],
         ],
       },
-      layout: 'noBorders',
+      layout: NfseLayoutBuilder.headerLayout,
     };
   }
 
-  private sectionMeta(n: NfseData) {
-    const dtEmissao = this.first(n.DataEmissao);
-    const competencia = this.first(n.Competencia);
-    const codVerif = this.first(n.CodigoVerificacao);
-    const rps = Array.isArray(n.IdentificacaoRps)
-      ? n.IdentificacaoRps[0]
-      : n.IdentificacaoRps;
-    const numRps = this.first(rps?.Numero);
+  private sectionMeta(n: NfseData): Content {
+    const dtEmissao = this.first(n.DataEmissaoNFe);
+    const competencia = '—'; // não existe no layout atual
+    const codVerif = this.first(n.ChaveNFe?.CodigoVerificacao);
+    const numRps = this.first(n.ChaveRPS?.NumeroRPS);
 
     return {
-      margin: [0, 0, 0, 10],
+      margin: [0, 0, 0, 10] as MarginsTuple,
       table: {
-        widths: ['*', '*', '*', '*'],
+        widths: ['*'],
         body: [
           [
-            { text: 'Data e Hora da Emissão', style: 'th' },
-            { text: 'Competência', style: 'th' },
-            { text: 'Código de Verificação', style: 'th' },
-            { text: 'Número do RPS', style: 'th' },
-          ],
-          [
-            { text: dtEmissao || '—', style: 'td' },
-            { text: competencia || '—', style: 'td' },
-            { text: codVerif || '—', style: 'td' },
-            { text: numRps || '—', style: 'td' },
+            {
+              table: {
+                widths: ['*', '*', '*', NfseLayoutBuilder.NUMBER_BOX_WIDTH],
+                body: [
+                  [
+                    { text: 'Emissão', style: 'th' },
+                    { text: 'Competência', style: 'th' },
+                    { text: 'Código de Verificação', style: 'th' },
+                    { text: 'Número do RPS', style: 'th' },
+                  ],
+                  [
+                    { text: dtEmissao || '—', style: 'td' },
+                    { text: competencia, style: 'td' },
+                    { text: codVerif || '—', style: 'td' },
+                    { text: numRps || '—', style: 'td' },
+                  ],
+                ],
+              },
+              layout: NfseLayoutBuilder.gridNoOuterLayout,
+            },
           ],
         ],
       },
+      layout: NfseLayoutBuilder.outerBoxLayout,
     };
   }
 
-  private sectionPrestador(n: NfseData) {
-    const prest = this.getPrestadorData(n.PrestadorServico);
-    const org = Array.isArray(n.OrgaoGerador)
-      ? n.OrgaoGerador[0]
-      : n.OrgaoGerador;
-
-    const municipioNome = MunicipioResolver.resolveName(org?.CodigoMunicipio);
-    const uf = this.first(org?.Uf);
+  private sectionPrestador(n: NfseData): Content {
+    const prest = this.getPrestadorData(n);
+    const end = this.formatEnderecoPrestador(n);
+    const municipioUF = `${this.first(
+      MunicipioResolver.resolveName(end.municipio),
+    )} / ${this.first(end.uf)}`;
 
     return {
-      margin: [0, 0, 0, 10],
+      margin: [0, 0, 0, 10] as MarginsTuple,
       table: {
         widths: ['*'],
         body: [
@@ -250,8 +433,20 @@ export class NfseLayoutBuilder {
                     { text: prest.cnpj, style: 'td2' },
                   ],
                   [
+                    { text: 'Endereço', style: 'th2' },
+                    { text: end.endereco, style: 'td2' },
+                  ],
+                  [
+                    { text: 'Bairro', style: 'th2' },
+                    { text: end.bairro, style: 'td2' },
+                  ],
+                  [
                     { text: 'Município / UF', style: 'th2' },
-                    { text: `${municipioNome} / ${uf}`, style: 'td2' },
+                    { text: municipioUF, style: 'td2' },
+                  ],
+                  [
+                    { text: 'CEP', style: 'th2' },
+                    { text: end.cep, style: 'td2' },
                   ],
                 ],
               },
@@ -260,14 +455,19 @@ export class NfseLayoutBuilder {
           ],
         ],
       },
-      layout: 'lightHorizontalLines',
+      layout: NfseLayoutBuilder.outerBoxLayout,
     };
   }
 
-  private sectionTomador(n: NfseData) {
-    const toma = this.getTomadorData(n.TomadorServico);
+  private sectionTomador(n: NfseData): Content {
+    const toma = this.getTomadorData(n);
+    const end = this.formatEnderecoTomador(n);
+    const municipioUF = `${this.first(
+      MunicipioResolver.resolveName(end.municipio),
+    )} / ${this.first(end.uf)}`;
+
     return {
-      margin: [0, 0, 0, 10],
+      margin: [0, 0, 0, 10] as MarginsTuple,
       table: {
         widths: ['*'],
         body: [
@@ -285,6 +485,22 @@ export class NfseLayoutBuilder {
                     { text: 'CNPJ/CPF', style: 'th2' },
                     { text: toma.cnpj, style: 'td2' },
                   ],
+                  [
+                    { text: 'Endereço', style: 'th2' },
+                    { text: end.endereco, style: 'td2' },
+                  ],
+                  [
+                    { text: 'Bairro', style: 'th2' },
+                    { text: end.bairro, style: 'td2' },
+                  ],
+                  [
+                    { text: 'Município / UF', style: 'th2' },
+                    { text: municipioUF, style: 'td2' },
+                  ],
+                  [
+                    { text: 'CEP', style: 'th2' },
+                    { text: end.cep, style: 'td2' },
+                  ],
                 ],
               },
               layout: 'lightHorizontalLines',
@@ -292,16 +508,14 @@ export class NfseLayoutBuilder {
           ],
         ],
       },
+      layout: NfseLayoutBuilder.outerBoxLayout,
     };
   }
 
-  private sectionDiscriminacao(n: NfseData) {
-    const discri = Array.isArray(n.Servico)
-      ? this.first(n.Servico[0]?.Discriminacao)
-      : this.first(n.Servico?.Discriminacao);
-
+  private sectionDiscriminacao(n: NfseData): Content {
+    const discri = this.first(n.Discriminacao);
     return {
-      margin: [0, 0, 0, 10],
+      margin: [0, 0, 0, 10] as MarginsTuple,
       table: {
         widths: ['*'],
         body: [
@@ -309,48 +523,65 @@ export class NfseLayoutBuilder {
           [{ text: discri || '—', style: 'td2' }],
         ],
       },
-      layout: 'lightHorizontalLines',
+      layout: NfseLayoutBuilder.outerBoxLayout,
     };
   }
 
-  private sectionValores(n: NfseData) {
-    const vals = this.getValores(n.Servico);
+  private sectionValores(n: NfseData): Content {
+    const vals = this.getValores(n);
     return {
-      margin: [0, 0, 0, 8],
+      margin: [0, 0, 0, 8] as MarginsTuple,
       table: {
-        widths: ['25%', '25%', '25%', '25%'],
+        widths: ['*'],
         body: [
           [
-            { text: 'Valor dos Serviços (R$)', style: 'th' },
-            { text: 'Base de Cálculo (R$)', style: 'th' },
-            { text: 'Alíquota (%)', style: 'th' },
-            { text: 'Valor do ISS (R$)', style: 'th' },
-          ],
-          [
-            { text: vals.valorServicos || '—', style: 'td' },
-            { text: vals.baseCalculo || '—', style: 'td' },
-            { text: vals.aliquota || '—', style: 'td' },
-            { text: vals.valorIss || '—', style: 'td' },
+            {
+              table: {
+                widths: ['25%', '25%', '25%', '25%'],
+                body: [
+                  [
+                    { text: 'Valor dos Serviços (R$)', style: 'th' },
+                    { text: 'Valor Total Recebido (R$)', style: 'th' },
+                    { text: 'Alíquota (%)', style: 'th' },
+                    { text: 'Valor do ISS (R$)', style: 'th' },
+                  ],
+                  [
+                    { text: vals.valorServicos || '—', style: 'td' },
+                    { text: vals.valorTotalRecebido || '—', style: 'td' },
+                    { text: vals.aliquota || '—', style: 'td' },
+                    { text: vals.valorIss || '—', style: 'td' },
+                  ],
+                ],
+              },
+              layout: NfseLayoutBuilder.gridNoOuterLayout,
+            },
           ],
         ],
       },
+      layout: NfseLayoutBuilder.outerBoxLayout,
     };
   }
 
-  private sectionAvisos() {
+  private sectionAvisos(): Content {
     return {
-      margin: [0, 6, 0, 0],
+      margin: [0, 6, 0, 0] as MarginsTuple,
       fontSize: 9,
       italics: true,
-      text: [
-        '1 - A autenticidade desta Nota Fiscal pode ser validada no portal do município utilizando o Código de Verificação. ',
-        '2 - Este documento foi emitido eletronicamente.',
+      stack: [
+        {
+          text: '1 - A autenticidade desta Nota Fiscal pode ser validada no portal do município utilizando o Código de Verificação.',
+        },
+        {
+          text: '2 - Este documento foi emitido eletronicamente.',
+          margin: [0, 4, 0, 0] as MarginsTuple,
+        },
       ],
     };
   }
 
-  public buildNotaContent(n: NfseData) {
-    return [
+  // ====== Pipeline ======
+  public buildNotaContent(n: NfseData): Content[] {
+    const sections: Content[] = [
       this.sectionHeader(n),
       this.sectionMeta(n),
       this.sectionPrestador(n),
@@ -359,22 +590,57 @@ export class NfseLayoutBuilder {
       this.sectionValores(n),
       this.sectionAvisos(),
     ];
+
+    const qrNode = this.buildQrNode(n.Assinatura);
+    if (qrNode) sections.push(qrNode);
+
+    return sections;
   }
 
   public buildDocument(nfseDataList: NfseData[]): TDocumentDefinitions {
-    const content: any[] = [];
+    const content: Content[] = [];
+
     nfseDataList.forEach((n, i) => {
-      content.push(...this.buildNotaContent(n));
-      if (i < nfseDataList.length - 1)
+      const notaContent = this.buildNotaContent(n);
+      content.push(...notaContent);
+      if (i < nfseDataList.length - 1) {
         content.push({ text: ' ', pageBreak: 'after' });
+      }
     });
 
     return {
       pageSize: 'A4',
-      pageMargins: [20, 20, 20, 28],
+      pageMargins: [20, 20, 20, 28] as MarginsTuple,
       content,
       styles: nfseStyles,
       defaultStyle: { font: 'Helvetica', fontSize: 11 },
     };
+  }
+
+  private loadLogoDataUrl(ibgeCode: string): string | undefined {
+    const candidates = [
+      path.resolve(
+        __dirname,
+        `../../../../assets/logo-prefeitura-${ibgeCode}.png`,
+      ),
+      path.resolve(
+        process.cwd(),
+        `dist/assets/logo-prefeitura-${ibgeCode}.png`,
+      ),
+      path.resolve(process.cwd(), `assets/logo-prefeitura-${ibgeCode}.png`),
+    ];
+
+    for (const filePath of candidates) {
+      try {
+        if (fs.existsSync(filePath)) {
+          const base64 = fs.readFileSync(filePath).toString('base64');
+          return `data:image/png;base64,${base64}`;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    return undefined;
   }
 }

@@ -1,134 +1,78 @@
 export interface NfseData {
-  Numero: string | string[];
-  CodigoVerificacao: string | string[];
-  DataEmissao: string | string[];
-  Competencia?: string | string[];
+  Assinatura?: string;
 
-  IdentificacaoRps?:
-    | {
-        Numero?: string | string[];
-        Serie?: string | string[];
-        Tipo?: string | string[];
-      }
-    | Array<{ Numero?: string[]; Serie?: string[]; Tipo?: string[] }>;
+  ChaveNFe?: {
+    InscricaoPrestador?: string;
+    NumeroNFe?: string;
+    CodigoVerificacao?: string;
+  };
 
-  OrgaoGerador?:
-    | { CodigoMunicipio?: string | string[]; Uf?: string | string[] }
-    | Array<{ CodigoMunicipio?: string[]; Uf?: string[] }>;
+  DataEmissaoNFe?: string;
+  NumeroLote?: string;
 
-  PrestadorServico:
-    | {
-        RazaoSocial: string | string[];
-        NomeFantasia?: string | string[];
-        Endereco?: string | string[];
-        Contato?: { Email?: string | string[] };
-        IdentificacaoPrestador?: {
-          Cnpj?: string | string[];
-          InscricaoMunicipal?: string | string[];
-        };
-      }
-    | Array<{
-        RazaoSocial: string[];
-        NomeFantasia?: string[];
-        Endereco?: string[];
-        Contato?: Array<{ Email?: string[] }>;
-        IdentificacaoPrestador?: Array<{
-          Cnpj?: string[];
-          InscricaoMunicipal?: string[];
-        }>;
-      }>;
+  ChaveRPS?: {
+    InscricaoPrestador?: string;
+    SerieRPS?: string;
+    NumeroRPS?: string;
+  };
 
-  TomadorServico:
-    | {
-        RazaoSocial: string | string[];
-        Endereco?: {
-          Endereco?: string | string[];
-          Numero?: string | string[];
-          Complemento?: string | string[];
-          Bairro?: string | string[];
-          CodigoMunicipio?: string | string[];
-          Uf?: string | string[];
-          Cep?: string | string[];
-        };
-        Contato?: { Telefone?: string | string[]; Email?: string | string[] };
-        IdentificacaoTomador?: {
-          CpfCnpj?: { Cnpj?: string | string[]; Cpf?: string | string[] };
-          InscricaoMunicipal?: string | string[];
-        };
-      }
-    | Array<{
-        RazaoSocial: string[];
-        Endereco?: Array<{
-          Endereco?: string[];
-          Numero?: string[];
-          Complemento?: string[];
-          Bairro?: string[];
-          CodigoMunicipio?: string[];
-          Uf?: string[];
-          Cep?: string[];
-        }>;
-        Contato?: Array<{ Telefone?: string[]; Email?: string[] }>;
-        IdentificacaoTomador?: Array<{
-          CpfCnpj?: Array<{ Cnpj?: string[]; Cpf?: string[] }>;
-          InscricaoMunicipal?: string[];
-        }>;
-      }>;
+  TipoRPS?: string;
+  DataEmissaoRPS?: string;
 
-  Servico:
-    | {
-        Valores: {
-          ValorServicos?: string | string[];
-          ValorDeducoes?: string | string[];
-          ValorPis?: string | string[];
-          ValorCofins?: string | string[];
-          ValorInss?: string | string[];
-          ValorIr?: string | string[];
-          ValorCsll?: string | string[];
-          IssRetido?: string | string[];
-          ValorIss?: string | string[];
-          OutrasRetencoes?: string | string[];
-          BaseCalculo?: string | string[];
-          Aliquota?: string | string[];
-          ValorLiquidoNfse?: string | string[];
-          ValorIssRetido?: string | string[];
-          DescontoCondicionado?: string | string[];
-          DescontoIncondicionado?: string | string[];
-        };
-        ItemListaServico?: string | string[];
-        CodigoCnae?: string | string[];
-        CodigoTributacaoMunicipio?: string | string[];
-        Discriminacao?: string | string[];
-        CodigoMunicipio?: string | string[];
-      }
-    | Array<{
-        Valores: Array<{
-          ValorServicos?: string[];
-          ValorDeducoes?: string[];
-          ValorPis?: string[];
-          ValorCofins?: string[];
-          ValorInss?: string[];
-          ValorIr?: string[];
-          ValorCsll?: string[];
-          IssRetido?: string[];
-          ValorIss?: string[];
-          OutrasRetencoes?: string[];
-          BaseCalculo?: string[];
-          Aliquota?: string[];
-          ValorLiquidoNfse?: string[];
-          ValorIssRetido?: string[];
-          DescontoCondicionado?: string[];
-          DescontoIncondicionado?: string[];
-        }>;
-        ItemListaServico?: string[];
-        CodigoCnae?: string[];
-        CodigoTributacaoMunicipio?: string[];
-        Discriminacao?: string[];
-        CodigoMunicipio?: string[];
-      }>;
+  CPFCNPJPrestador?: {
+    CNPJ?: string;
+    CPF?: string;
+  };
+
+  RazaoSocialPrestador?: string;
+
+  EnderecoPrestador?: {
+    TipoLogradouro?: string;
+    Logradouro?: string;
+    NumeroEndereco?: string;
+    Bairro?: string;
+    Cidade?: string; // código IBGE (ex.: "3550308")
+    UF?: string; // ex.: "SP"
+    CEP?: string;
+  };
+
+  EmailPrestador?: string;
+
+  StatusNFe?: string; // ex.: "N"
+  TributacaoNFe?: string; // ex.: "T"
+  OpcaoSimples?: string; // "0" ou "1"
+
+  ValorServicos?: string;
+  CodigoServico?: string; // ex.: "3205"
+  AliquotaServicos?: string; // ex.: "0.02"
+  ValorISS?: string;
+  ValorCredito?: string;
+  ISSRetido?: string | boolean; // caso use valueProcessors pode virar boolean
+
+  CPFCNPJTomador?: {
+    CNPJ?: string;
+    CPF?: string;
+  };
+
+  RazaoSocialTomador?: string;
+
+  EnderecoTomador?: {
+    TipoLogradouro?: string;
+    Logradouro?: string;
+    NumeroEndereco?: string;
+    ComplementoEndereco?: string;
+    Bairro?: string;
+    Cidade?: string; // código IBGE (ex.: "4314902")
+    UF?: string; // ex.: "RS"
+    CEP?: string;
+  };
+
+  EmailTomador?: string;
+
+  Discriminacao?: string;
+  ValorTotalRecebido?: string;
 }
 
 export interface NfseParsed {
-  Nfse: {
-    InfNfse: NfseData[] | NfseData;
-  };
+  NFe: NfseData | NfseData[];
 }

@@ -1,5 +1,12 @@
 [
   { "codigo": "2311306", "nome": "Fortaleza", "uf": "CE" },
   { "codigo": "3550308", "nome": "São Paulo", "uf": "SP" },
-  { "codigo": "3304557", "nome": "Rio de Janeiro", "uf": "RJ" }
+  { "codigo": "3304557", "nome": "Rio de Janeiro", "uf": "RJ" },
+  { "codigo": "4106902", "nome": "Curitiba", "uf": "PR" },
+  { "codigo": "5208707", "nome": "Goiânia", "uf": "GO" },
+  { "codigo": "3106200", "nome": "Belo Horizonte", "uf": "MG" },
+  { "codigo": "2408102", "nome": "Natal", "uf": "RN" },
+  { "codigo": "2800308", "nome": "Aracaju", "uf": "SE" },
+  { "codigo": "2200053", "nome": "Teresina", "uf": "PI" },
+  { "codigo": "4314902", "nome": "Porto Alegre", "uf": "RS" }
 ]
