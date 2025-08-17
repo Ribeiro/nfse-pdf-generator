@@ -268,20 +268,41 @@ export class NfseLayoutBuilder {
     return b64;
   }
 
-  private buildQrNode(assinatura?: string): Content | null {
-    const raw = this.first(assinatura);
-    if (raw === 'Não informado') return null;
+  private buildSaoPauloNfseUrl(n: NfseData): string | undefined {
+    const inscricao =
+      n.ChaveNFe?.InscricaoPrestador || n.ChaveRPS?.InscricaoPrestador;
+    const nf = n.ChaveNFe?.NumeroNFe;
+    const verificacao = n.ChaveNFe?.CodigoVerificacao;
 
-    const decoded = this.decodeBase64ToUtf8(raw).trim();
-    const qrValue = decoded.length > 0 ? decoded : raw;
+    if (!inscricao || !nf || !verificacao) return undefined;
+
+    const params = new URLSearchParams({
+      inscricao: String(inscricao),
+      nf: String(nf),
+      verificacao: String(verificacao),
+    });
+
+    return `https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx?${params.toString()}`;
+  }
+
+  private buildQrNode(n: NfseData): Content | null {
+    const spUrl = this.buildSaoPauloNfseUrl(n);
+
+    const rawAss = this.first(n.Assinatura);
+    const decoded =
+      rawAss !== 'Não informado' ? this.decodeBase64ToUtf8(rawAss).trim() : '';
+    const qrValue =
+      spUrl ??
+      (decoded.length > 0 ? decoded : rawAss !== 'Não informado' ? rawAss : '');
+
+    if (!qrValue) return null;
 
     const pos = this.getQrAbsolutePosition();
-    const node: Content = {
+    return {
       qr: qrValue,
       fit: NfseLayoutBuilder.qrSize,
       absolutePosition: { x: pos.x, y: pos.y },
     };
-    return node;
   }
 
   private sectionHeader(n: NfseData): Content {
@@ -591,7 +612,7 @@ export class NfseLayoutBuilder {
       this.sectionAvisos(),
     ];
 
-    const qrNode = this.buildQrNode(n.Assinatura);
+    const qrNode = this.buildQrNode(n);
     if (qrNode) sections.push(qrNode);
 
     return sections;
