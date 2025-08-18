@@ -770,41 +770,6 @@ export class NfseLayoutBuilder {
     return String(value);
   }
 
-  private buildCancelledBackground() {
-    return (
-      _currentPage: number,
-      pageSize: { width: number; height: number },
-    ) => {
-      const cx = pageSize.width / 2;
-      const cy = pageSize.height / 2;
-
-      const angle = 35;
-      const text = 'CANCELADA';
-      const fontSize = 110;
-      const fill = '#d32f2f';
-      const opacity = 1.3;
-
-      const svg = `
-      <svg width="${pageSize.width}" height="${pageSize.height}">
-        <g transform="translate(${cx},${cy}) rotate(${angle})">
-          <text x="0" y="0"
-            text-anchor="middle"
-            dominant-baseline="middle"
-            font-size="${fontSize}"
-            font-family="Helvetica"
-            font-weight="700"
-            fill="${fill}"
-            opacity="${opacity}">
-            ${text}
-          </text>
-        </g>
-      </svg>
-    `;
-
-      return { svg };
-    };
-  }
-
   private buildCancelledOverlayHeader() {
     return (
       _currentPage: number,
