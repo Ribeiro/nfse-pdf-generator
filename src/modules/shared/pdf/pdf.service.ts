@@ -91,7 +91,7 @@ export class PdfService {
     const builder = new NfseLayoutBuilder();
 
     if (mode === 'single') {
-      const docDefinition = builder.buildDocument(nfseDataList);
+      const docDefinition = builder.buildDocument(nfseDataList, true);
       return this.docToBuffer(docDefinition);
     }
 

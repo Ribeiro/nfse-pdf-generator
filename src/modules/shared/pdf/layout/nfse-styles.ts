@@ -1,15 +1,35 @@
 export const nfseStyles = {
-  title: { fontSize: 14, bold: true },
-  titleSmall: { fontSize: 10, bold: true },
-  sectionHeader: {
-    fillColor: '#E5E7EB',
+  title: {
+    fontSize: 14,
     bold: true,
-    margin: [0, 2, 0, 2],
   },
-  th: { bold: true, fillColor: '#F3F4F6', margin: [3, 3, 3, 3] },
-  td: { margin: [3, 3, 3, 3] },
-  th2: { bold: true, fillColor: '#F9FAFB', margin: [4, 4, 4, 4] },
-  td2: { margin: [4, 4, 4, 4] },
-  boxHeader: { bold: true, fontSize: 10 },
-  boxValue: { fontSize: 16, bold: true },
+  titleSmall: {
+    fontSize: 12,
+    bold: true,
+  },
+  sectionHeader: {
+    fillColor: '#eeeeee',
+    bold: true,
+    margin: [0, 4, 0, 4] as [number, number, number, number],
+  },
+  th: {
+    bold: true,
+    fillColor: '#dddddd',
+    margin: [0, 2, 0, 2] as [number, number, number, number],
+  },
+  td: {
+    margin: [0, 2, 0, 2] as [number, number, number, number],
+  },
+  td2: {
+    margin: [0, 6, 0, 6] as [number, number, number, number],
+    fontSize: 9,
+    lineHeight: 1.2,
+  },
+  boxLabel: {
+    bold: true,
+    margin: [0, 2, 0, 2] as [number, number, number, number],
+  },
+  boxValue: {
+    margin: [0, 2, 0, 2] as [number, number, number, number],
+  },
 };

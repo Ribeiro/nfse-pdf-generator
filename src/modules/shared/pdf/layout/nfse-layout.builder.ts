@@ -28,6 +28,26 @@ type LayoutNode = Readonly<{
 
 export class NfseLayoutBuilder {
   private static readonly NUMBER_BOX_WIDTH = 140;
+  private static readonly CEP_REGEX: RegExp = /^(\d{2})(\d{3})(\d{3})$/;
+  private static readonly ONLY_DIGIT_REGEX = /\D/g;
+  private static readonly CPF_REGEX = /^(\d{3})(\d{3})(\d{3})(\d{2})$/;
+  private static readonly CNPJ_REGEX = /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/;
+  private static readonly PREFEITURA_SP_URL =
+    'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx';
+
+  private static readonly innerCompactLayout: TableLayout = {
+    hLineWidth: (i: number, node: unknown) => {
+      const rows = NfseLayoutBuilder.tableRowsCount(node);
+      return i === 0 || i === rows ? 0 : 0.5;
+    },
+    vLineWidth: () => 0,
+    hLineColor: () => '#E0E0E0',
+
+    paddingLeft: () => 4,
+    paddingRight: () => 4,
+    paddingTop: () => 1.5,
+    paddingBottom: () => 1.5,
+  };
 
   private static readonly headerLayout: TableLayout = {
     hLineWidth: (i: number, node: unknown) => {
@@ -50,7 +70,7 @@ export class NfseLayoutBuilder {
     hLineWidth: (i: number) => {
       return i === 1 ? 1 : 0;
     },
-    vLineWidth: () => 0, // sem linhas verticais internas
+    vLineWidth: () => 0,
     hLineColor: () => '#BFBFBF',
     paddingLeft: () => 6,
     paddingRight: () => 6,
@@ -71,7 +91,7 @@ export class NfseLayoutBuilder {
     right: 20,
     bottom: 28,
   };
-  private static readonly qrSize = 80;
+  private static readonly qrSize = 64;
 
   private static is2DArray(
     val: unknown,
@@ -168,9 +188,13 @@ export class NfseLayoutBuilder {
   }
 
   private getValores(n: NfseData) {
+    const valorServicos = this.first(n.ValorServicos);
+    const totalRecebido = this.first(n.ValorTotalRecebido);
+
     return {
-      valorServicos: this.first(n.ValorServicos),
-      valorTotalRecebido: this.first(n.ValorTotalRecebido),
+      valorServicos,
+      valorTotalRecebido:
+        totalRecebido !== 'Não informado' ? totalRecebido : valorServicos,
       aliquota: this.first(n.AliquotaServicos),
       valorIss: this.first(n.ValorISS),
     };
@@ -182,9 +206,10 @@ export class NfseLayoutBuilder {
     const log = this.first(end?.Logradouro);
     const num = this.first(end?.NumeroEndereco);
     const bairro = this.first(end?.Bairro);
-    const municipio = this.first(end?.Cidade); // IBGE
+    const municipio = this.first(end?.Cidade);
     const uf = this.first(end?.UF);
-    const cep = this.first(end?.CEP);
+    let cep = this.first(end?.CEP);
+    cep = this.formatCep(cep);
 
     const logCompleto = [tipoLog, log]
       .filter((s) => s !== 'Não informado')
@@ -204,9 +229,10 @@ export class NfseLayoutBuilder {
     const num = this.first(end?.NumeroEndereco);
     const comp = this.first(end?.ComplementoEndereco);
     const bairro = this.first(end?.Bairro);
-    const municipio = this.first(end?.Cidade); // IBGE
+    const municipio = this.first(end?.Cidade);
     const uf = this.first(end?.UF);
-    const cep = this.first(end?.CEP);
+    let cep = this.first(end?.CEP);
+    cep = this.formatCep(cep);
 
     const logCompleto = [tipoLog, log]
       .filter((s) => s !== 'Não informado')
@@ -218,14 +244,6 @@ export class NfseLayoutBuilder {
     if (comp !== 'Não informado') endereco += ' - ' + comp;
 
     return { endereco, bairro, municipio, uf, cep };
-  }
-
-  private getQrAbsolutePosition() {
-    const w = NfseLayoutBuilder.A4.width;
-    const h = NfseLayoutBuilder.A4.height;
-    const { right, bottom } = NfseLayoutBuilder.margins;
-    const size = NfseLayoutBuilder.qrSize;
-    return { x: w - right - size, y: h - bottom - size };
   }
 
   private normalizeB64(s: string): string {
@@ -268,41 +286,25 @@ export class NfseLayoutBuilder {
     return b64;
   }
 
-  private buildSaoPauloNfseUrl(n: NfseData): string | undefined {
+  private buildQrValue(n: NfseData): string | null {
     const inscricao =
       n.ChaveNFe?.InscricaoPrestador || n.ChaveRPS?.InscricaoPrestador;
     const nf = n.ChaveNFe?.NumeroNFe;
     const verificacao = n.ChaveNFe?.CodigoVerificacao;
 
-    if (!inscricao || !nf || !verificacao) return undefined;
+    if (inscricao && nf && verificacao) {
+      const params = new URLSearchParams({
+        inscricao: String(inscricao),
+        nf: String(nf),
+        verificacao: String(verificacao),
+      });
+      return `${NfseLayoutBuilder.PREFEITURA_SP_URL}?${params.toString()}`;
+    }
 
-    const params = new URLSearchParams({
-      inscricao: String(inscricao),
-      nf: String(nf),
-      verificacao: String(verificacao),
-    });
-
-    return `https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx?${params.toString()}`;
-  }
-
-  private buildQrNode(n: NfseData): Content | null {
-    const spUrl = this.buildSaoPauloNfseUrl(n);
-
-    const rawAss = this.first(n.Assinatura);
-    const decoded =
-      rawAss !== 'Não informado' ? this.decodeBase64ToUtf8(rawAss).trim() : '';
-    const qrValue =
-      spUrl ??
-      (decoded.length > 0 ? decoded : rawAss !== 'Não informado' ? rawAss : '');
-
-    if (!qrValue) return null;
-
-    const pos = this.getQrAbsolutePosition();
-    return {
-      qr: qrValue,
-      fit: NfseLayoutBuilder.qrSize,
-      absolutePosition: { x: pos.x, y: pos.y },
-    };
+    const raw = this.first(n.Assinatura);
+    if (raw === 'Não informado') return null;
+    const decoded = this.decodeBase64ToUtf8(raw).trim();
+    return decoded.length > 0 ? decoded : raw;
   }
 
   private sectionHeader(n: NfseData): Content {
@@ -390,7 +392,7 @@ export class NfseLayoutBuilder {
 
   private sectionMeta(n: NfseData): Content {
     const dtEmissao = this.first(n.DataEmissaoNFe);
-    const competencia = '—'; // não existe no layout atual
+    const dtEmissaoFormatada = this.formatDate(dtEmissao);
     const codVerif = this.first(n.ChaveNFe?.CodigoVerificacao);
     const numRps = this.first(n.ChaveRPS?.NumeroRPS);
 
@@ -402,17 +404,21 @@ export class NfseLayoutBuilder {
           [
             {
               table: {
-                widths: ['*', '*', '*', NfseLayoutBuilder.NUMBER_BOX_WIDTH],
+                widths: ['*', '*', NfseLayoutBuilder.NUMBER_BOX_WIDTH],
                 body: [
                   [
                     { text: 'Emissão', style: 'th' },
-                    { text: 'Competência', style: 'th' },
                     { text: 'Código de Verificação', style: 'th' },
-                    { text: 'Número do RPS', style: 'th' },
+                    {
+                      text: 'Número do RPS',
+                      style: 'th',
+                      bold: false,
+                      fontSize: 10,
+                      color: '#555',
+                    },
                   ],
                   [
-                    { text: dtEmissao || '—', style: 'td' },
-                    { text: competencia, style: 'td' },
+                    { text: dtEmissaoFormatada || '—', style: 'td' },
                     { text: codVerif || '—', style: 'td' },
                     { text: numRps || '—', style: 'td' },
                   ],
@@ -434,44 +440,48 @@ export class NfseLayoutBuilder {
       MunicipioResolver.resolveName(end.municipio),
     )} / ${this.first(end.uf)}`;
 
+    const H = (t: string) => ({
+      text: t,
+      style: 'th2',
+      fontSize: 9,
+      lineHeight: 1.05,
+      margin: [0, 1, 0, 1] as MarginsTuple,
+      noWrap: true,
+    });
+    const V = (t: string) => ({
+      text: t,
+      style: 'td2',
+      fontSize: 9,
+      lineHeight: 1.05,
+      margin: [0, 1, 0, 1] as MarginsTuple,
+    });
+
     return {
-      margin: [0, 0, 0, 10] as MarginsTuple,
+      margin: [0, 0, 0, 6] as MarginsTuple,
       table: {
         widths: ['*'],
         body: [
-          [{ text: 'Dados do Prestador de Serviços', style: 'sectionHeader' }],
+          [
+            {
+              text: 'Dados do Prestador de Serviços',
+              style: 'sectionHeader',
+              margin: [0, 2, 0, 2],
+            },
+          ],
           [
             {
               table: {
                 widths: ['25%', '75%'],
                 body: [
-                  [
-                    { text: 'Razão Social/Nome', style: 'th2' },
-                    { text: prest.razaoSocial, style: 'td2' },
-                  ],
-                  [
-                    { text: 'CNPJ/CPF', style: 'th2' },
-                    { text: prest.cnpj, style: 'td2' },
-                  ],
-                  [
-                    { text: 'Endereço', style: 'th2' },
-                    { text: end.endereco, style: 'td2' },
-                  ],
-                  [
-                    { text: 'Bairro', style: 'th2' },
-                    { text: end.bairro, style: 'td2' },
-                  ],
-                  [
-                    { text: 'Município / UF', style: 'th2' },
-                    { text: municipioUF, style: 'td2' },
-                  ],
-                  [
-                    { text: 'CEP', style: 'th2' },
-                    { text: end.cep, style: 'td2' },
-                  ],
+                  [H('Razão Social/Nome'), V(prest.razaoSocial)],
+                  [H('CNPJ/CPF'), V(this.formatCpfCnpj(prest.cnpj))],
+                  [H('Endereço'), V(end.endereco)],
+                  [H('Bairro'), V(end.bairro)],
+                  [H('Município / UF'), V(municipioUF)],
+                  [H('CEP'), V(end.cep)],
                 ],
               },
-              layout: 'lightHorizontalLines',
+              layout: NfseLayoutBuilder.innerCompactLayout,
             },
           ],
         ],
@@ -487,44 +497,48 @@ export class NfseLayoutBuilder {
       MunicipioResolver.resolveName(end.municipio),
     )} / ${this.first(end.uf)}`;
 
+    const H = (t: string) => ({
+      text: t,
+      style: 'th2',
+      fontSize: 9,
+      lineHeight: 1.05,
+      margin: [0, 1, 0, 1] as MarginsTuple,
+      noWrap: true,
+    });
+    const V = (t: string) => ({
+      text: t,
+      style: 'td2',
+      fontSize: 9,
+      lineHeight: 1.05,
+      margin: [0, 1, 0, 1] as MarginsTuple,
+    });
+
     return {
-      margin: [0, 0, 0, 10] as MarginsTuple,
+      margin: [0, 0, 0, 6] as MarginsTuple,
       table: {
         widths: ['*'],
         body: [
-          [{ text: 'Dados do Tomador de Serviços', style: 'sectionHeader' }],
+          [
+            {
+              text: 'Dados do Tomador de Serviços',
+              style: 'sectionHeader',
+              margin: [0, 2, 0, 2],
+            },
+          ],
           [
             {
               table: {
                 widths: ['25%', '75%'],
                 body: [
-                  [
-                    { text: 'Razão Social/Nome', style: 'th2' },
-                    { text: toma.razaoSocial, style: 'td2' },
-                  ],
-                  [
-                    { text: 'CNPJ/CPF', style: 'th2' },
-                    { text: toma.cnpj, style: 'td2' },
-                  ],
-                  [
-                    { text: 'Endereço', style: 'th2' },
-                    { text: end.endereco, style: 'td2' },
-                  ],
-                  [
-                    { text: 'Bairro', style: 'th2' },
-                    { text: end.bairro, style: 'td2' },
-                  ],
-                  [
-                    { text: 'Município / UF', style: 'th2' },
-                    { text: municipioUF, style: 'td2' },
-                  ],
-                  [
-                    { text: 'CEP', style: 'th2' },
-                    { text: end.cep, style: 'td2' },
-                  ],
+                  [H('Razão Social/Nome'), V(toma.razaoSocial)],
+                  [H('CNPJ/CPF'), V(this.formatCpfCnpj(toma.cnpj))],
+                  [H('Endereço'), V(end.endereco)],
+                  [H('Bairro'), V(end.bairro)],
+                  [H('Município / UF'), V(municipioUF)],
+                  [H('CEP'), V(end.cep)],
                 ],
               },
-              layout: 'lightHorizontalLines',
+              layout: NfseLayoutBuilder.innerCompactLayout,
             },
           ],
         ],
@@ -534,7 +548,9 @@ export class NfseLayoutBuilder {
   }
 
   private sectionDiscriminacao(n: NfseData): Content {
-    const discri = this.first(n.Discriminacao);
+    let discri = this.first(n.Discriminacao);
+    discri =
+      'A presente Nota Fiscal de Serviços refere-se à prestação de serviços de consultoria especializada em processos de gestão corporativa, com foco em análise estratégica de negócios, revisão de fluxos operacionais e implementação de melhorias contínuas. Inclui a elaboração de relatórios técnicos detalhados, reuniões presenciais e virtuais com gestores e equipes envolvidas, levantamento de requisitos, desenho de soluções e acompanhamento de indicadores-chave de desempenho. Abrange, ainda, atividades de suporte técnico-administrativo, orientação para utilização de ferramentas digitais de produtividade, treinamentos básicos para colaboradores e suporte remoto em caráter emergencial. Foram considerados no escopo os serviços de análise de dados financeiros e operacionais, geração de dashboards gerenciais, emissão de recomendações estratégicas e apoio à tomada de decisão em áreas críticas. O pacote contempla, também, atendimento a dúvidas e esclarecimentos posteriores à entrega, assegurando a correta absorção dos resultados e a continuidade do uso das soluções propostas, garantindo eficiência e maior valor agregado às atividades do tomador.';
     return {
       margin: [0, 0, 0, 10] as MarginsTuple,
       table: {
@@ -550,43 +566,42 @@ export class NfseLayoutBuilder {
 
   private sectionValores(n: NfseData): Content {
     const vals = this.getValores(n);
+
+    const H = (t: string) => ({
+      text: t,
+      style: 'th',
+      fontSize: 10,
+      noWrap: true,
+    });
+
     return {
       margin: [0, 0, 0, 8] as MarginsTuple,
       table: {
-        widths: ['*'],
+        widths: ['30%', '30%', '20%', '20%'],
         body: [
           [
-            {
-              table: {
-                widths: ['25%', '25%', '25%', '25%'],
-                body: [
-                  [
-                    { text: 'Valor dos Serviços (R$)', style: 'th' },
-                    { text: 'Valor Total Recebido (R$)', style: 'th' },
-                    { text: 'Alíquota (%)', style: 'th' },
-                    { text: 'Valor do ISS (R$)', style: 'th' },
-                  ],
-                  [
-                    { text: vals.valorServicos || '—', style: 'td' },
-                    { text: vals.valorTotalRecebido || '—', style: 'td' },
-                    { text: vals.aliquota || '—', style: 'td' },
-                    { text: vals.valorIss || '—', style: 'td' },
-                  ],
-                ],
-              },
-              layout: NfseLayoutBuilder.gridNoOuterLayout,
-            },
+            H('Valor dos Serviços (R$)'),
+            H('Valor Total Recebido (R$)'),
+            H('Alíquota (%)'),
+            H('Valor do ISS (R$)'),
+          ],
+          [
+            { text: vals.valorServicos || '—', style: 'td' },
+            { text: vals.valorTotalRecebido || '—', style: 'td' },
+            { text: vals.aliquota || '—', style: 'td' },
+            { text: vals.valorIss || '—', style: 'td' },
           ],
         ],
       },
-      layout: NfseLayoutBuilder.outerBoxLayout,
+      layout: NfseLayoutBuilder.gridNoOuterLayout,
     };
   }
 
   private sectionAvisos(): Content {
     return {
-      margin: [0, 6, 0, 0] as MarginsTuple,
-      fontSize: 9,
+      margin: [0, 4, 0, 0] as MarginsTuple,
+      fontSize: 8.5,
+      lineHeight: 1.1,
       italics: true,
       stack: [
         {
@@ -594,13 +609,12 @@ export class NfseLayoutBuilder {
         },
         {
           text: '2 - Este documento foi emitido eletronicamente.',
-          margin: [0, 4, 0, 0] as MarginsTuple,
+          margin: [0, 3, 0, 0] as MarginsTuple,
         },
       ],
     };
   }
 
-  // ====== Pipeline ======
   public buildNotaContent(n: NfseData): Content[] {
     const sections: Content[] = [
       this.sectionHeader(n),
@@ -612,13 +626,13 @@ export class NfseLayoutBuilder {
       this.sectionAvisos(),
     ];
 
-    const qrNode = this.buildQrNode(n);
-    if (qrNode) sections.push(qrNode);
-
     return sections;
   }
 
-  public buildDocument(nfseDataList: NfseData[]): TDocumentDefinitions {
+  public buildDocument(
+    nfseDataList: NfseData[],
+    cancelled: boolean = false,
+  ): TDocumentDefinitions {
     const content: Content[] = [];
 
     nfseDataList.forEach((n, i) => {
@@ -629,13 +643,45 @@ export class NfseLayoutBuilder {
       }
     });
 
-    return {
+    const first = nfseDataList[0];
+
+    const footerBoxHeight = NfseLayoutBuilder.qrSize + 12;
+    const bottomMargin = Math.max(footerBoxHeight, 36);
+
+    const doc: TDocumentDefinitions = {
       pageSize: 'A4',
-      pageMargins: [20, 20, 20, 28] as MarginsTuple,
+      pageMargins: [18, 16, 18, bottomMargin] as [
+        number,
+        number,
+        number,
+        number,
+      ],
       content,
       styles: nfseStyles,
-      defaultStyle: { font: 'Helvetica', fontSize: 11 },
+      defaultStyle: { font: 'Helvetica', fontSize: 10 },
+      footer: (currentPage: number): Content => {
+        if (currentPage !== 1) return { text: '' };
+        const qrValue = first ? this.buildQrValue(first) : null;
+        if (!qrValue) return { text: '' };
+
+        return {
+          margin: [18, 2, 18, 6],
+          columns: [
+            { width: '*', text: '' },
+            {
+              width: 'auto',
+              qr: qrValue,
+              fit: NfseLayoutBuilder.qrSize,
+              alignment: 'right',
+            },
+          ],
+          columnGap: 10,
+        };
+      },
+      ...(cancelled ? { background: this.buildCancelledBackground() } : {}),
     };
+
+    return doc;
   }
 
   private loadLogoDataUrl(ibgeCode: string): string | undefined {
@@ -663,5 +709,99 @@ export class NfseLayoutBuilder {
     }
 
     return undefined;
+  }
+
+  private formatDate(value?: string): string {
+    if (!value) return '—';
+    const dt = new Date(value);
+
+    const date = dt.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+
+    const time = dt.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    return `${date} ${time}`;
+  }
+
+  private loadRaioLogoDataUrl(): string | undefined {
+    const candidates = [
+      path.resolve(__dirname, '../../../../assets/logo-raio.png'),
+      path.resolve(process.cwd(), 'dist/assets/logo-raio.png'),
+      path.resolve(process.cwd(), 'assets/logo-raio.png'),
+    ];
+
+    for (const filePath of candidates) {
+      try {
+        if (fs.existsSync(filePath)) {
+          const base64 = fs.readFileSync(filePath).toString('base64');
+          return `data:image/png;base64,${base64}`;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    return undefined;
+  }
+
+  private formatCep(value: string | number): string {
+    let cep = String(value).replace(NfseLayoutBuilder.ONLY_DIGIT_REGEX, '');
+    cep = cep.padStart(8, '0');
+    return cep.replace(NfseLayoutBuilder.CEP_REGEX, '$1.$2-$3');
+  }
+
+  private formatCpfCnpj(value: string | number): string {
+    const digits = String(value).replace(
+      NfseLayoutBuilder.ONLY_DIGIT_REGEX,
+      '',
+    );
+
+    if (digits.length === 11) {
+      return digits.replace(NfseLayoutBuilder.CPF_REGEX, '$1.$2.$3-$4');
+    } else if (digits.length === 14) {
+      return digits.replace(NfseLayoutBuilder.CNPJ_REGEX, '$1.$2.$3/$4-$5');
+    }
+
+    return String(value);
+  }
+
+  private buildCancelledBackground() {
+    return (
+      _currentPage: number,
+      pageSize: { width: number; height: number },
+    ) => {
+      const cx = pageSize.width / 2;
+      const cy = pageSize.height / 2;
+
+      const angle = 35;
+      const text = 'CANCELADA';
+      const fontSize = 110;
+      const fill = '#d32f2f';
+      const opacity = 0.3;
+
+      const svg = `
+      <svg width="${pageSize.width}" height="${pageSize.height}">
+        <g transform="translate(${cx},${cy}) rotate(${angle})">
+          <text x="0" y="0"
+            text-anchor="middle"
+            dominant-baseline="middle"
+            font-size="${fontSize}"
+            font-family="Helvetica"
+            font-weight="700"
+            fill="${fill}"
+            opacity="${opacity}">
+            ${text}
+          </text>
+        </g>
+      </svg>
+    `;
+
+      return { svg };
+    };
   }
 }
