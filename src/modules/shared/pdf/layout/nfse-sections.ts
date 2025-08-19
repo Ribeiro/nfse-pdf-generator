@@ -10,7 +10,6 @@ type MarginsTuple = [number, number, number, number];
 export class NfseSections {
   static readonly NUMBER_BOX_WIDTH = 140;
 
-  /** Resolver obtido do ambiente (pode ser injetado nos testes) */
   private readonly municipio: MunicipioResolver;
 
   constructor(
@@ -18,11 +17,9 @@ export class NfseSections {
     municipio?: MunicipioResolver,
   ) {
     this.municipio = municipio ?? MunicipioResolver.fromEnv();
-    // opcional: iniciar o preload de forma não-bloqueante
     void this.municipio.preload();
   }
 
-  /** Agora é async: resolve o nome do município com o resolver */
   async header(n: NfseData): Promise<Content> {
     const numeroNfse = Fmt.first(n.ChaveNFe?.NumeroNFe);
 
@@ -140,7 +137,6 @@ export class NfseSections {
     };
   }
 
-  /** Agora é async por causa da resolução do município */
   async prestador(n: NfseData): Promise<Content> {
     const razaoSocial = Fmt.first(n.RazaoSocialPrestador);
     const doc = Fmt.first(n.CPFCNPJPrestador?.CNPJ ?? n.CPFCNPJPrestador?.CPF);
@@ -221,7 +217,6 @@ export class NfseSections {
     };
   }
 
-  /** Agora é async por causa da resolução do município */
   async tomador(n: NfseData): Promise<Content> {
     const razao = Fmt.first(n.RazaoSocialTomador);
     const doc = Fmt.first(n.CPFCNPJTomador?.CNPJ ?? n.CPFCNPJTomador?.CPF);
@@ -353,9 +348,7 @@ export class NfseSections {
     };
   }
 
-  // --- privados (endereços) — sem alterações
   private enderecoPrestador(n: NfseData) {
-    /* ...igual ao seu... */
     const e = n.EnderecoPrestador;
     const tipoLog = Fmt.first(e?.TipoLogradouro);
     const log = Fmt.first(e?.Logradouro);
@@ -376,7 +369,6 @@ export class NfseSections {
   }
 
   private enderecoTomador(n: NfseData) {
-    /* ...igual ao seu... */
     const e = n.EnderecoTomador;
     const tipoLog = Fmt.first(e?.TipoLogradouro);
     const log = Fmt.first(e?.Logradouro);
