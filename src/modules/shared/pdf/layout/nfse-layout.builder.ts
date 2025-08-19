@@ -5,7 +5,7 @@ import type {
 } from '../types/pdfmake.types';
 import { nfseStyles } from './nfse-styles';
 import { MunicipioResolver } from './municipio.resolver';
-import type { Content, TableLayout } from 'pdfmake/interfaces';
+import type { Content, TableLayout, TableCell } from 'pdfmake/interfaces';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -436,28 +436,49 @@ export class NfseLayoutBuilder {
   private sectionPrestador(n: NfseData): Content {
     const prest = this.getPrestadorData(n);
     const end = this.formatEnderecoPrestador(n);
-    const municipioUF = `${this.first(
-      MunicipioResolver.resolveName(end.municipio),
-    )} / ${this.first(end.uf)}`;
+    const municipioUF = `${this.first(MunicipioResolver.resolveName(end.municipio))} / ${this.first(end.uf)}`;
 
-    const H = (t: string) => ({
-      text: t,
-      style: 'th2',
-      fontSize: 9,
-      lineHeight: 1.05,
-      margin: [0, 1, 0, 1] as MarginsTuple,
-      noWrap: true,
-    });
-    const V = (t: string) => ({
-      text: t,
-      style: 'td2',
-      fontSize: 9,
-      lineHeight: 1.05,
-      margin: [0, 1, 0, 1] as MarginsTuple,
-    });
+    const H = (t: string): TableCell =>
+      ({
+        text: t,
+        style: 'th2',
+        fontSize: 9,
+        lineHeight: 1.05,
+        margin: [0, 1, 0, 1],
+        noWrap: true,
+      }) as TableCell;
+
+    const V = (t: string): TableCell =>
+      ({
+        text: t,
+        style: 'td2',
+        fontSize: 9,
+        lineHeight: 1.05,
+        margin: [0, 1, 0, 1],
+      }) as TableCell;
+
+    const brandLogo = this.loadRaioLogoDataUrl();
+    const BRAND_BOX_WIDTH = 180;
+    const BRAND_MAX_HEIGHT = 80;
+
+    const brandCell: TableCell = brandLogo
+      ? {
+          rowSpan: 6,
+          margin: [8, 6, 8, 6],
+          stack: [
+            {
+              image: brandLogo,
+              fit: [BRAND_BOX_WIDTH - 16, BRAND_MAX_HEIGHT],
+              alignment: 'center',
+            },
+          ],
+        }
+      : ({ rowSpan: 6, text: '' } as TableCell);
+
+    const filler: TableCell = { text: '' } as TableCell;
 
     return {
-      margin: [0, 0, 0, 6] as MarginsTuple,
+      margin: [0, 0, 0, 6],
       table: {
         widths: ['*'],
         body: [
@@ -471,15 +492,15 @@ export class NfseLayoutBuilder {
           [
             {
               table: {
-                widths: ['25%', '75%'],
+                widths: [140, '*', BRAND_BOX_WIDTH],
                 body: [
-                  [H('Razão Social/Nome'), V(prest.razaoSocial)],
-                  [H('CNPJ/CPF'), V(this.formatCpfCnpj(prest.cnpj))],
-                  [H('Endereço'), V(end.endereco)],
-                  [H('Bairro'), V(end.bairro)],
-                  [H('Município / UF'), V(municipioUF)],
-                  [H('CEP'), V(end.cep)],
-                ],
+                  [H('Razão Social/Nome'), V(prest.razaoSocial), brandCell],
+                  [H('CNPJ/CPF'), V(this.formatCpfCnpj(prest.cnpj)), filler],
+                  [H('Endereço'), V(end.endereco), filler],
+                  [H('Bairro'), V(end.bairro), filler],
+                  [H('Município / UF'), V(municipioUF), filler],
+                  [H('CEP'), V(end.cep), filler],
+                ] as TableCell[][],
               },
               layout: NfseLayoutBuilder.innerCompactLayout,
             },
