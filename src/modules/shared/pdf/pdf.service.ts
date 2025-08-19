@@ -10,7 +10,7 @@ import JSZip from 'jszip';
 
 export type PdfGenerationMode = 'single' | 'multiple';
 
-export interface GerarPdfOptions {
+export interface GeneratePdfOptions {
   mode?: PdfGenerationMode;
   zipName?: string;
   filenameFor?: (nota: NfseData, index: number) => string;
@@ -19,19 +19,21 @@ export interface GerarPdfOptions {
 @Injectable()
 export class PdfService {
   private readonly logger = new Logger(PdfService.name);
-  private printer: PdfPrinter | null = null;
-  private isInitialized = false;
+  private readonly printer: PdfPrinter;
 
-  private initializePdfMake(): void {
-    if (this.isInitialized && this.printer) return;
+  constructor() {
+    this.printer = this.initializePdfMake();
+  }
+
+  private initializePdfMake(): PdfPrinter {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const PdfPrinterCtor = require('pdfmake') as PdfPrinterConstructor;
 
-      this.printer = new PdfPrinterCtor(NfseLayoutBuilder.fonts);
+      const printer = new PdfPrinterCtor(NfseLayoutBuilder.fonts);
 
-      this.isInitialized = true;
       this.logger.log('PdfMake inicializado com sucesso (server-side).');
+      return printer;
     } catch (error) {
       this.logger.error('Erro ao inicializar pdfMake:', error);
       throw new Error(
@@ -45,9 +47,6 @@ export class PdfService {
   private docToBuffer(docDefinition: TDocumentDefinitions): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       try {
-        if (!this.printer) {
-          return reject(new Error('PdfMake não foi inicializado corretamente'));
-        }
         const pdfDoc = this.printer.createPdfKitDocument(docDefinition);
         const chunks: Buffer[] = [];
         pdfDoc.on('data', (c: Buffer) => chunks.push(c));
@@ -75,9 +74,9 @@ export class PdfService {
     return `nfse-${this.sanitizeFilenamePart(numero)}.pdf`;
   }
 
-  async gerarPdf(
+  async generatePdf(
     nfseDataList: NfseData[],
-    opts: GerarPdfOptions = {},
+    opts: GeneratePdfOptions = {},
   ): Promise<Buffer> {
     if (!Array.isArray(nfseDataList) || nfseDataList.length === 0) {
       throw new Error(
@@ -85,13 +84,11 @@ export class PdfService {
       );
     }
 
-    this.initializePdfMake();
-
     const mode: PdfGenerationMode = opts.mode ?? 'single';
     const builder = new NfseLayoutBuilder();
 
     if (mode === 'single') {
-      const docDefinition = builder.buildDocument(nfseDataList, true);
+      const docDefinition = await builder.buildDocument(nfseDataList, true);
       return this.docToBuffer(docDefinition);
     }
 
@@ -103,7 +100,7 @@ export class PdfService {
 
     for (let i = 0; i < nfseDataList.length; i++) {
       const nota = nfseDataList[i];
-      const docDefinition = builder.buildDocument([nota]);
+      const docDefinition = await builder.buildDocument([nota]);
       const pdfBuffer = await this.docToBuffer(docDefinition);
       const filename = filenameFor(nota, i);
       zip.file(filename, pdfBuffer);

@@ -20,7 +20,7 @@ export class NfseControllerHelpers {
     mode: PdfGenerationMode,
     zipName: string,
   ): Promise<Buffer> {
-    return nfseService.processarNfse(body, { mode, zipName });
+    return nfseService.processNfse(body, { mode, zipName });
   }
 
   static setResponseHeaders(

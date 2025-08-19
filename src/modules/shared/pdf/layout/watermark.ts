@@ -1,4 +1,4 @@
-import type { Content } from 'pdfmake/interfaces';
+import { Content } from '../types';
 
 export type HeaderFn = (
   currentPage: number,

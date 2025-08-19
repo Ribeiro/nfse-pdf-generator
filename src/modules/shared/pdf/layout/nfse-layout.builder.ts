@@ -1,8 +1,8 @@
 import type {
   TDocumentDefinitions,
   FontDictionary,
+  Content,
 } from '../types/pdfmake.types';
-import type { Content } from 'pdfmake/interfaces';
 import { nfseStyles } from './nfse-styles';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { NfseSections } from './nfse-sections';
@@ -45,34 +45,41 @@ export class NfseLayoutBuilder {
     this.sections = new NfseSections(new DefaultAssetLoader());
   }
 
-  public buildNotaContent(n: NfseData): Content[] {
-    return [
-      this.sections.header(n),
-      this.sections.meta(n),
-      this.sections.prestador(n),
-      this.sections.tomador(n),
-      this.sections.discriminacao(n),
-      this.sections.valores(n),
-      this.sections.avisos(),
-    ];
+  public async buildNotaContent(n: NfseData): Promise<Content[]> {
+    const [header, meta, prestador, tomador, discriminacao, valores, avisos] =
+      await Promise.all([
+        this.sections.header(n),
+        Promise.resolve(this.sections.meta(n)),
+        this.sections.prestador(n),
+        this.sections.tomador(n),
+        Promise.resolve(this.sections.discriminacao(n)),
+        Promise.resolve(this.sections.valores(n)),
+        Promise.resolve(this.sections.avisos()),
+      ]);
+
+    return [header, meta, prestador, tomador, discriminacao, valores, avisos];
   }
 
-  public buildDocument(
+  public async buildDocument(
     nfseDataList: NfseData[],
     cancelled = false,
-  ): TDocumentDefinitions {
+  ): Promise<TDocumentDefinitions> {
+    const blocos = await Promise.all(
+      nfseDataList.map((n) => this.buildNotaContent(n)),
+    );
+
     const content: Content[] = [];
-    nfseDataList.forEach((n, i) => {
-      content.push(...this.buildNotaContent(n));
-      if (i < nfseDataList.length - 1)
+    for (let i = 0; i < blocos.length; i++) {
+      content.push(...blocos[i]);
+      if (i < blocos.length - 1)
         content.push({ text: ' ', pageBreak: 'after' });
-    });
+    }
 
     const first = nfseDataList[0];
     const footerBoxHeight = NfseLayoutBuilder.qrSize + 12;
     const bottomMargin = Math.max(footerBoxHeight, 36);
 
-    const doc: TDocumentDefinitions = {
+    return {
       pageSize: 'A4',
       pageMargins: [18, 16, 18, bottomMargin],
       content,
@@ -98,7 +105,5 @@ export class NfseLayoutBuilder {
       },
       ...(cancelled ? { header: makeCancelledOverlayHeader() } : {}),
     };
-
-    return doc;
   }
 }

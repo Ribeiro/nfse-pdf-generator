@@ -10,7 +10,7 @@ export class NfseService {
 
   constructor(private readonly pdfService: PdfService) {}
 
-  async processarNfse(
+  async processNfse(
     nfseDto: NfseDto,
     opts?: { mode?: 'single' | 'multiple'; zipName?: string },
   ): Promise<Buffer> {
@@ -21,7 +21,7 @@ export class NfseService {
     const nfe = parsedXml.NFe;
     const nfseDataList: NfseData[] = Array.isArray(nfe) ? nfe : [nfe];
 
-    return this.pdfService.gerarPdf(nfseDataList, {
+    return this.pdfService.generatePdf(nfseDataList, {
       mode: opts?.mode ?? 'single',
       zipName: opts?.zipName,
     });

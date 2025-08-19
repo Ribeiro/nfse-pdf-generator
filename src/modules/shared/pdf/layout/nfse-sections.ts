@@ -1,19 +1,32 @@
-import type { Content, TableCell } from 'pdfmake/interfaces';
 import { MunicipioResolver } from './municipio.resolver';
 import { PdfLayouts } from './layouts';
 import { ValueFormat as Fmt } from './value-format';
 import type { AssetLoader } from './asset-loader';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
+import { Content, TableCell } from '../types';
 
 type MarginsTuple = [number, number, number, number];
 
 export class NfseSections {
   static readonly NUMBER_BOX_WIDTH = 140;
-  constructor(private assets: AssetLoader) {}
 
-  header(n: NfseData): Content {
+  /** Resolver obtido do ambiente (pode ser injetado nos testes) */
+  private readonly municipio: MunicipioResolver;
+
+  constructor(
+    private assets: AssetLoader,
+    municipio?: MunicipioResolver,
+  ) {
+    this.municipio = municipio ?? MunicipioResolver.fromEnv();
+    // opcional: iniciar o preload de forma não-bloqueante
+    void this.municipio.preload();
+  }
+
+  /** Agora é async: resolve o nome do município com o resolver */
+  async header(n: NfseData): Promise<Content> {
     const numeroNfse = Fmt.first(n.ChaveNFe?.NumeroNFe);
-    const municipioNomeRaw = MunicipioResolver.resolveName(
+
+    const municipioNomeRaw = await this.municipio.resolveName(
       n.EnderecoPrestador?.Cidade,
     );
     const municipioNome =
@@ -127,11 +140,14 @@ export class NfseSections {
     };
   }
 
-  prestador(n: NfseData): Content {
+  /** Agora é async por causa da resolução do município */
+  async prestador(n: NfseData): Promise<Content> {
     const razaoSocial = Fmt.first(n.RazaoSocialPrestador);
     const doc = Fmt.first(n.CPFCNPJPrestador?.CNPJ ?? n.CPFCNPJPrestador?.CPF);
     const end = this.enderecoPrestador(n);
-    const municipioUF = `${Fmt.first(MunicipioResolver.resolveName(end.municipio))} / ${Fmt.first(end.uf)}`;
+
+    const municipioNome = await this.municipio.resolveName(end.municipio);
+    const municipioUF = `${Fmt.first(municipioNome)} / ${Fmt.first(end.uf)}`;
 
     const H = (t: string): TableCell =>
       ({
@@ -205,11 +221,14 @@ export class NfseSections {
     };
   }
 
-  tomador(n: NfseData): Content {
+  /** Agora é async por causa da resolução do município */
+  async tomador(n: NfseData): Promise<Content> {
     const razao = Fmt.first(n.RazaoSocialTomador);
     const doc = Fmt.first(n.CPFCNPJTomador?.CNPJ ?? n.CPFCNPJTomador?.CPF);
     const end = this.enderecoTomador(n);
-    const municipioUF = `${Fmt.first(MunicipioResolver.resolveName(end.municipio))} / ${Fmt.first(end.uf)}`;
+
+    const municipioNome = await this.municipio.resolveName(end.municipio);
+    const municipioUF = `${Fmt.first(municipioNome)} / ${Fmt.first(end.uf)}`;
 
     const H = (t: string) => ({
       text: t,
@@ -334,8 +353,9 @@ export class NfseSections {
     };
   }
 
-  // --- privados (endereços)
+  // --- privados (endereços) — sem alterações
   private enderecoPrestador(n: NfseData) {
+    /* ...igual ao seu... */
     const e = n.EnderecoPrestador;
     const tipoLog = Fmt.first(e?.TipoLogradouro);
     const log = Fmt.first(e?.Logradouro);
@@ -356,6 +376,7 @@ export class NfseSections {
   }
 
   private enderecoTomador(n: NfseData) {
+    /* ...igual ao seu... */
     const e = n.EnderecoTomador;
     const tipoLog = Fmt.first(e?.TipoLogradouro);
     const log = Fmt.first(e?.Logradouro);

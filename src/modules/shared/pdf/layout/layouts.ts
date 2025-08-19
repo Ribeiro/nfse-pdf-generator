@@ -1,4 +1,4 @@
-import type { TableLayout } from 'pdfmake/interfaces';
+import { TableLayout } from '../types';
 
 type LayoutNode = Readonly<{
   table?: Readonly<{
