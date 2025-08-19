@@ -35,21 +35,35 @@ Usa **NestJS**, **pdfmake** (server-side) e **JSZip**. O layout é montado por c
 ```
 src/
   assets/
-    logo-prefeitura.png
+    logo-prefeitura-2311306.png
+    logo-prefeitura-3550308.png
+    logo-raio.png
+    municipios-ibge.json
   modules/
     nfse/
       controller/nfse.controller.ts
       services/nfse.service.ts
-      types/nfse.types.ts          // Tipos da NFS-e
+      types/nfse.types.ts
       dto/nfse.dto.ts
     shared/
       pdf/
-        pdf.service.ts             // Orquestra pdfmake + builder + zip
+        pdf.service.ts
         layout/
-          nfse-layout.builder.ts   // Monta o conteúdo/estilo do PDF
+          nfse-layout.builder.ts
         types/
-          pdfmake.types.ts         // Tipos do pdfmake (server-side)
+          pdfmake.types.ts
 ```
+
+
+## NfseLayoutBuilder - atua como orquestrador do layout
+
+* value-format.ts: tudo de formatação (CEP, CPF/CNPJ, datas, base64).
+* asset-loader.ts: I/O de arquivos e resolução de logos.
+* qr.service.ts: regra para montar a URL/valor do QR.
+* layouts.ts: layouts/tabulações do pdfmake (isolado e reutilizável).
+* nfse-sections.ts: cada seção da NFS-e em um método (pura geração de Content).
+* watermark.ts: cabeçalho sobreposto para CANCELADA.
+
 
 ---
 
