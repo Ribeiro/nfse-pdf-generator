@@ -218,6 +218,18 @@ npm run format
 
 ---
 
+
+## MongoDb
+ - Caso queira importar os dados do IBGE ref municípios para o Mongo usando o arquivo
+   municipios-ibge.json que se encontra na pasta assets:
+
+ ```bash
+  mongoimport --db sua_base --collection municipios --file municipios-ibge.json --jsonArray
+ ```
+
+---
+
+
 ## 📄 Licença
 
 MIT — sinta-se à vontade para usar e adaptar.
