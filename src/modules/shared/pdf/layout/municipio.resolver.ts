@@ -1,12 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-type MapType = Record<string, { nome: string; uf: string }>;
+type MapType = Record<string, { nome: string }>;
 
 interface MunicipioItem {
-  codigo: string | number;
+  id: string | number;
   nome: string;
-  uf: string;
 }
 
 export class MunicipioResolver {
@@ -46,8 +45,8 @@ export class MunicipioResolver {
     if (Array.isArray(parsed)) {
       const arr = parsed as MunicipioItem[];
       this.map = arr.reduce<MapType>((acc, m) => {
-        const codigo = String(m.codigo);
-        acc[codigo] = { nome: m.nome, uf: m.uf };
+        const codigo = String(m.id);
+        acc[codigo] = { nome: m.nome };
         return acc;
       }, {});
     } else {
