@@ -113,6 +113,11 @@ jest.mock('./layout/nfse-layout.builder', () => {
     static fonts = {
       Roboto: { normal: 'n', bold: 'b', italics: 'i', bolditalics: 'bi' },
     };
+
+    static create(..._args: unknown[]) {
+      return Promise.resolve(new NfseLayoutBuilder());
+    }
+
     buildDocument = buildDocumentMock;
   }
 

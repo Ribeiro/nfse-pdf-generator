@@ -35,7 +35,7 @@ jest.mock('./value-format', () => ({
   },
 }));
 
-jest.mock('./municipio.resolver', () => {
+jest.mock('./asset-loader', () => {
   const resolveNameMock: jest.MockedFunction<
     (c?: string | string[]) => Promise<string>
   > = jest.fn((c?: string | string[]) =>
@@ -64,7 +64,7 @@ jest.mock('./municipio.resolver', () => {
   };
 });
 
-const { resolveNameMock } = jest.requireMock('./municipio.resolver');
+const { resolveNameMock } = jest.requireMock('./asset-loader');
 
 jest.mock('./layouts', () => ({
   PdfLayouts: {
@@ -183,9 +183,7 @@ describe('NfseSections', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    const { resolveNameMock, preloadMock } = jest.requireMock(
-      './municipio.resolver',
-    );
+    const { resolveNameMock, preloadMock } = jest.requireMock('./asset-loader');
 
     resolveNameMock.mockImplementation((c?: string | string[]) =>
       Promise.resolve(typeof c === 'string' && c.length ? c : 'Não informado'),

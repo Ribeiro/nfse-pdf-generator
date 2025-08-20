@@ -1,7 +1,10 @@
-import { MunicipioResolver } from './municipio.resolver';
 import { PdfLayouts } from './layouts';
 import { ValueFormat as Fmt } from './value-format';
-import type { AssetLoader } from './asset-loader';
+import {
+  MunicipioResolver,
+  type AssetLoader,
+  type IMunicipioResolver,
+} from './asset-loader';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { Content, TableCell } from '../types';
 
@@ -10,11 +13,11 @@ type MarginsTuple = [number, number, number, number];
 export class NfseSections {
   static readonly NUMBER_BOX_WIDTH = 140;
 
-  private readonly municipio: MunicipioResolver;
+  private readonly municipio: IMunicipioResolver;
 
   constructor(
     private assets: AssetLoader,
-    municipio?: MunicipioResolver,
+    municipio?: IMunicipioResolver,
   ) {
     this.municipio = municipio ?? MunicipioResolver.fromEnv();
     void this.municipio.preload();
@@ -350,7 +353,6 @@ export class NfseSections {
 
   private enderecoPrestador(n: NfseData) {
     const e = n.EnderecoPrestador;
-    const tipoLog = Fmt.first(e?.TipoLogradouro);
     const log = Fmt.first(e?.Logradouro);
     const num = Fmt.first(e?.NumeroEndereco);
     const bairro = Fmt.first(e?.Bairro);
@@ -358,7 +360,7 @@ export class NfseSections {
     const uf = Fmt.first(e?.UF);
     let cep = Fmt.first(e?.CEP);
     cep = Fmt.formatCep(cep);
-    const logCompleto = [tipoLog, log]
+    const logCompleto = [log]
       .filter((s) => s !== 'Não informado')
       .join(' ')
       .trim();
@@ -370,7 +372,6 @@ export class NfseSections {
 
   private enderecoTomador(n: NfseData) {
     const e = n.EnderecoTomador;
-    const tipoLog = Fmt.first(e?.TipoLogradouro);
     const log = Fmt.first(e?.Logradouro);
     const num = Fmt.first(e?.NumeroEndereco);
     const comp = Fmt.first(e?.ComplementoEndereco);
@@ -379,7 +380,7 @@ export class NfseSections {
     const uf = Fmt.first(e?.UF);
     let cep = Fmt.first(e?.CEP);
     cep = Fmt.formatCep(cep);
-    const logCompleto = [tipoLog, log]
+    const logCompleto = [log]
       .filter((s) => s !== 'Não informado')
       .join(' ')
       .trim();

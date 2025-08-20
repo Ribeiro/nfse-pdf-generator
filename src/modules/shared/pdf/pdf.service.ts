@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Readable } from 'stream'; // ⬅️ use o stream do Node
+import { Readable } from 'stream';
 import { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { NfseLayoutBuilder } from './layout/nfse-layout.builder';
 import type {
@@ -70,12 +70,11 @@ export class PdfService {
         'A lista de NFS-e fornecida está vazia ou não é um array.',
       );
     }
-    const builder = new NfseLayoutBuilder();
+    const builder = await NfseLayoutBuilder.create();
     const docDefinition = await builder.buildDocument(nfseDataList, true);
     return this.docToStream(docDefinition);
   }
 
-  // --------- MULTIPLE/ZIP (stream) ---------
   async generateZipStream(
     nfseDataList: NfseData[],
     opts: GeneratePdfOptions = {},
@@ -86,7 +85,7 @@ export class PdfService {
       );
     }
 
-    const builder = new NfseLayoutBuilder();
+    const builder = await NfseLayoutBuilder.create();
     const zip = new JSZip();
 
     const filenameFor =

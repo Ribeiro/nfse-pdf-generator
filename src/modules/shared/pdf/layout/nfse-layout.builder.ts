@@ -6,7 +6,7 @@ import type {
 import { nfseStyles } from './nfse-styles';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { NfseSections } from './nfse-sections';
-import { DefaultAssetLoader } from './asset-loader';
+import { createNfseInfraFromEnv, type AssetLoader } from './asset-loader';
 import { NfseQrService } from './qr.service';
 import { makeCancelledOverlayHeader } from './watermark';
 
@@ -38,11 +38,23 @@ export class NfseLayoutBuilder {
 
   private readonly sections: NfseSections;
   private readonly qr = new NfseQrService();
-
   private static readonly qrSize = 64;
 
-  constructor(private readonly opts: BuildOptions = {}) {
-    this.sections = new NfseSections(new DefaultAssetLoader());
+  private constructor(
+    private readonly opts: BuildOptions = {},
+    sections?: NfseSections,
+  ) {
+    this.sections =
+      sections ??
+      new NfseSections(
+        /* Default from env via NfseSections */ undefined as unknown as AssetLoader,
+      );
+  }
+
+  static async create(opts: BuildOptions = {}): Promise<NfseLayoutBuilder> {
+    const { assets, municipios } = await createNfseInfraFromEnv();
+    const sections = new NfseSections(assets, municipios);
+    return new NfseLayoutBuilder(opts, sections);
   }
 
   public async buildNotaContent(n: NfseData): Promise<Content[]> {

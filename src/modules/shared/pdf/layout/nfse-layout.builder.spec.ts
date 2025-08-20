@@ -6,8 +6,31 @@ jest.mock('./nfse-styles', () => ({
 }));
 
 jest.mock('./asset-loader', () => {
-  class DefaultAssetLoader {}
-  return { DefaultAssetLoader };
+  const fakeAssets = {
+    preload: jest.fn().mockResolvedValue(undefined),
+    loadMunicipioLogoDataUrl: jest
+      .fn()
+      .mockReturnValue('data:image/png;base64,AAA'),
+    loadBrandLogoDataUrl: jest
+      .fn()
+      .mockReturnValue('data:image/png;base64,BBB'),
+  };
+  const fakeMunicipios = {
+    preload: jest.fn().mockResolvedValue(undefined),
+    resolveName: jest.fn().mockResolvedValue('São Paulo'),
+    clearCache: jest.fn(),
+  };
+
+  const createNfseInfraFromEnv = jest.fn().mockResolvedValue({
+    assets: fakeAssets,
+    municipios: fakeMunicipios,
+  });
+
+  return {
+    __esModule: true,
+    createNfseInfraFromEnv,
+    __test__: { fakeAssets, fakeMunicipios },
+  };
 });
 
 jest.mock('./nfse-sections', () => {
@@ -79,7 +102,7 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('buildNotaContent returns the 7 sections in order', async () => {
-    const b = new NfseLayoutBuilder();
+    const b = await NfseLayoutBuilder.create();
     const content = await b.buildNotaContent(makeNota());
 
     expect(content).toEqual([
@@ -102,7 +125,7 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('buildDocument composes content for multiple notes and inserts page breaks between them', async () => {
-    const b = new NfseLayoutBuilder();
+    const b = await NfseLayoutBuilder.create();
     const n1 = makeNota();
     const n2 = makeNota({ ChaveNFe: { NumeroNFe: '2' } as any });
 
@@ -115,7 +138,7 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('sets A4 page size, margins (with bottom >= QR box), default style, and uses nfseStyles', async () => {
-    const b = new NfseLayoutBuilder();
+    const b = await NfseLayoutBuilder.create();
     const doc = await b.buildDocument([makeNota()]);
 
     expect(doc.pageSize).toBe('A4');
@@ -126,7 +149,7 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('footer shows QR only on the first page and only if QR value exists', async () => {
-    const b = new NfseLayoutBuilder();
+    const b = await NfseLayoutBuilder.create();
     const nota = makeNota();
     const doc = await b.buildDocument([nota]);
 
@@ -150,7 +173,7 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('adds cancelled header when cancelled flag is true', async () => {
-    const b = new NfseLayoutBuilder();
+    const b = await NfseLayoutBuilder.create();
     const doc = await b.buildDocument([makeNota()], true);
 
     expect(watermarkMod.makeCancelledOverlayHeader).toHaveBeenCalledTimes(1);
