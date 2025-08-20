@@ -1,46 +1,34 @@
+import { Readable } from 'stream';
 import { NfseService } from './nfse.service';
-import { PdfService } from '../../shared/pdf/pdf.service';
-import { NfseDto } from '../dto/nfse.dto';
+import type { PdfService } from '../../shared/pdf/pdf.service';
+import type { NfseDto } from '../dto/nfse.dto';
 import type { NfseParsed, NfseData } from '../types/nfse.types';
-import { Parser } from 'xml2js';
+import { parseStringPromise } from 'xml2js';
 
-jest.mock('xml2js', () => {
-  return {
-    Parser: jest.fn().mockImplementation(() => ({
-      parseString: jest.fn(),
-    })),
-  };
+jest.mock('xml2js', () => ({
+  parseStringPromise: jest.fn(),
+}));
+
+const makeDto = (overrides: Partial<NfseDto> = {}): NfseDto => ({
+  xml: '<NFe></NFe>',
+  ...overrides,
 });
 
-describe('NfseService', () => {
-  const makeDto = (overrides: Partial<NfseDto> = {}): NfseDto => ({
-    xml: '<NFe></NFe>',
-    ...overrides,
-  });
+const createPdfServiceMock = () =>
+  ({
+    generateStream: jest.fn(),
+    generateSinglePdfBuffer: jest.fn(),
+    generateZipBuffer: jest.fn(),
+  }) as unknown as jest.Mocked<
+    Pick<
+      PdfService,
+      'generateStream' | 'generateSinglePdfBuffer' | 'generateZipBuffer'
+    >
+  >;
 
-  const createPdfServiceMock = (): jest.Mocked<
-    Pick<PdfService, 'generatePdf'>
-  > => ({
-    generatePdf: jest.fn(),
-  });
-
+describe('NfseService (stream/buffer)', () => {
   let service: NfseService;
   let pdfService: ReturnType<typeof createPdfServiceMock>;
-
-  const setParserBehavior = (
-    impl: (
-      xml: string,
-      cb: (err: Error | null, result?: unknown) => void,
-    ) => void,
-  ) => {
-    const ParserMock = Parser as unknown as jest.MockedClass<typeof Parser>;
-    ParserMock.mockImplementation(
-      () =>
-        ({
-          parseString: impl,
-        }) as unknown as InstanceType<typeof Parser>,
-    );
-  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -48,71 +36,108 @@ describe('NfseService', () => {
     service = new NfseService(pdfService as unknown as PdfService);
   });
 
-  describe('processNfse', () => {
-    it('should parse XML, wrap single NFe as array, and call gerarPdf with default options', async () => {
-      const parsed: NfseParsed = {
-        NFe: { any: 'value' } as unknown as NfseData,
-      };
+  describe('generateStream', () => {
+    it('parses XML, extrai NFe (single -> array) e delega para pdfService.generateStream com as opções', async () => {
+      const parsed: NfseParsed = { NFe: { id: 1 } as unknown as NfseData };
+      (parseStringPromise as jest.Mock).mockResolvedValueOnce(parsed);
 
-      setParserBehavior((_xml, cb) => cb(null, parsed));
+      const body = makeDto();
+      const stream = Readable.from(['ok']);
+      pdfService.generateStream.mockResolvedValueOnce(
+        stream as unknown as Readable,
+      );
 
-      const dto = makeDto();
-      const expectedBuffer = Buffer.from('pdf');
-      pdfService.generatePdf.mockResolvedValueOnce(expectedBuffer);
-
-      const result = await service.processNfse(dto);
-
-      expect(pdfService.generatePdf).toHaveBeenCalledTimes(1);
-      const [dataArg, optionsArg] = pdfService.generatePdf.mock.calls[0];
-      expect(Array.isArray(dataArg)).toBe(true);
-      expect(dataArg).toEqual([{ any: 'value' }]);
-      expect(optionsArg).toEqual({ mode: 'single', zipName: undefined });
-      expect(result).toBe(expectedBuffer);
-    });
-
-    it('should forward explicit mode and zipName to gerarPdf', async () => {
-      const parsed: NfseParsed = {
-        NFe: [{ id: 1 }, { id: 2 }] as unknown as NfseData[],
-      };
-
-      setParserBehavior((_xml, cb) => cb(null, parsed));
-
-      const dto = makeDto();
-      const expectedBuffer = Buffer.from('zip');
-      pdfService.generatePdf.mockResolvedValueOnce(expectedBuffer);
-
-      const result = await service.processNfse(dto, {
+      const out = await service.generateStream(body, {
         mode: 'multiple',
         zipName: 'batch.zip',
       });
 
-      expect(pdfService.generatePdf).toHaveBeenCalledTimes(1);
-      const [dataArg, optionsArg] = pdfService.generatePdf.mock.calls[0];
-      expect(dataArg).toEqual([{ id: 1 }, { id: 2 }]);
-      expect(optionsArg).toEqual({ mode: 'multiple', zipName: 'batch.zip' });
-      expect(result).toBe(expectedBuffer);
+      expect(parseStringPromise).toHaveBeenCalledWith(body.xml, {
+        explicitArray: false,
+      });
+      expect(pdfService.generateStream).toHaveBeenCalledWith([{ id: 1 }], {
+        mode: 'multiple',
+        zipName: 'batch.zip',
+      });
+      expect(out).toBe(stream);
+    });
+  });
+
+  describe('generateBuffer', () => {
+    it('single (default): usa generateSinglePdfBuffer e envolve NFe objeto em array', async () => {
+      const parsed: NfseParsed = {
+        NFe: { any: 'value' } as unknown as NfseData,
+      };
+      (parseStringPromise as jest.Mock).mockResolvedValueOnce(parsed);
+
+      const expected = Buffer.from('pdf');
+      pdfService.generateSinglePdfBuffer.mockResolvedValueOnce(expected);
+
+      const res = await service.generateBuffer(makeDto());
+
+      expect(pdfService.generateSinglePdfBuffer).toHaveBeenCalledTimes(1);
+      expect(pdfService.generateSinglePdfBuffer).toHaveBeenCalledWith([
+        { any: 'value' },
+      ]);
+      expect(res).toBe(expected);
+      expect(pdfService.generateZipBuffer).not.toHaveBeenCalled();
     });
 
-    it('should reject when parser returns an error', async () => {
-      setParserBehavior((_xml, cb) => cb(new Error('invalid xml')));
+    it('multiple: usa generateZipBuffer e repassa array de NFe', async () => {
+      const parsed: NfseParsed = {
+        NFe: [{ id: 1 }, { id: 2 }] as unknown as NfseData[],
+      };
+      (parseStringPromise as jest.Mock).mockResolvedValueOnce(parsed);
 
-      const dto = makeDto();
+      const expected = Buffer.from('zip');
+      pdfService.generateZipBuffer.mockResolvedValueOnce(expected);
 
-      await expect(service.processNfse(dto)).rejects.toThrow(
+      const res = await service.generateBuffer(makeDto(), {
+        mode: 'multiple',
+        zipName: 'z.zip',
+      });
+
+      expect(pdfService.generateZipBuffer).toHaveBeenCalledTimes(1);
+      expect(pdfService.generateZipBuffer).toHaveBeenCalledWith(
+        [{ id: 1 }, { id: 2 }],
+        {
+          mode: 'multiple',
+          zipName: 'z.zip',
+        },
+      );
+      expect(res).toBe(expected);
+      expect(pdfService.generateSinglePdfBuffer).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('erros de parsing', () => {
+    it('propaga erro quando parseStringPromise rejeita', async () => {
+      (parseStringPromise as jest.Mock).mockRejectedValueOnce(
+        new Error('invalid xml'),
+      );
+
+      await expect(service.generateBuffer(makeDto())).rejects.toThrow(
         'Erro ao parsear XML: invalid xml',
       );
-      expect(pdfService.generatePdf).not.toHaveBeenCalled();
+
+      expect(pdfService.generateSinglePdfBuffer).not.toHaveBeenCalled();
+      expect(pdfService.generateZipBuffer).not.toHaveBeenCalled();
     });
 
-    it('should reject when parser returns undefined result', async () => {
-      setParserBehavior((_xml, cb) => cb(null, undefined));
+    it('wrap de erro quando parseStringPromise resolve com valor inválido (null/nao-objeto)', async () => {
+      (parseStringPromise as jest.Mock).mockResolvedValueOnce(null);
 
-      const dto = makeDto();
-
-      await expect(service.processNfse(dto)).rejects.toThrow(
-        'Resultado do parsing é nulo ou indefinido',
+      await expect(service.generateBuffer(makeDto())).rejects.toThrow(
+        'Erro ao parsear XML: Resultado do parsing é nulo/indefinido ou inválido',
       );
-      expect(pdfService.generatePdf).not.toHaveBeenCalled();
+    });
+
+    it('erro específico quando não existe chave NFe', async () => {
+      (parseStringPromise as jest.Mock).mockResolvedValueOnce({ Outra: 1 });
+
+      await expect(service.generateBuffer(makeDto())).rejects.toThrow(
+        'XML não contém a chave "NFe".',
+      );
     });
   });
 });

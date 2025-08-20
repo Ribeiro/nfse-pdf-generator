@@ -1,4 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { Readable } from 'stream';
 import { PdfService } from './pdf.service';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 
@@ -21,20 +24,36 @@ interface FakePdfDoc {
     event: 'data' | 'end' | 'error',
     cb: (...a: unknown[]) => void,
   ) => FakePdfDoc;
+  once: (
+    this: FakePdfDoc,
+    event: 'data' | 'end' | 'error',
+    cb: (...a: unknown[]) => void,
+  ) => FakePdfDoc;
   end: () => void;
 }
 
 type CreatePdfMock = jest.Mock<FakePdfDoc, [unknown]>;
-
-type FakePrinter = {
-  createPdfKitDocument: CreatePdfMock;
-};
+type FakePrinter = { createPdfKitDocument: CreatePdfMock };
 
 function createFakePdfDoc(ok = true): FakePdfDoc {
   const handlers: Record<string, Array<(...a: unknown[]) => void>> = {};
+  const add = (ev: string, cb: (...a: unknown[]) => void) => {
+    (handlers[ev] ??= []).push(cb);
+  };
+
   const doc: FakePdfDoc = {
     on(event, cb) {
-      (handlers[event] ??= []).push(cb);
+      add(event, cb);
+      return this;
+    },
+    once(event, cb) {
+      let called = false;
+      add(event, (...args: unknown[]) => {
+        if (!called) {
+          called = true;
+          cb(...args);
+        }
+      });
       return this;
     },
     end() {
@@ -65,29 +84,30 @@ jest.mock('pdfmake', () => pdfmakeCtor);
 
 jest.mock('jszip', () => {
   const jszipFile = jest.fn();
-  const jszipGenerateAsync = jest
-    .fn()
-    .mockResolvedValue(Buffer.from('ZIP_BUFFER'));
+  const jszipGenerateNodeStream = jest.fn(() =>
+    Readable.from([Buffer.from('ZIP_BUFFER')]),
+  );
 
   const JSZipMock = jest.fn().mockImplementation(() => ({
     file: jszipFile,
-    generateAsync: jszipGenerateAsync,
+    generateNodeStream: jszipGenerateNodeStream,
   }));
 
   return {
     __esModule: true,
     default: JSZipMock,
     jszipFile,
-    jszipGenerateAsync,
+    jszipGenerateNodeStream,
   };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-const { jszipFile: jszipFileSpy, jszipGenerateAsync: jszipGenerateAsyncSpy } =
-  jest.requireMock('jszip');
+const {
+  jszipFile: jszipFileSpy,
+  jszipGenerateNodeStream: jszipGenerateNodeStreamSpy,
+} = jest.requireMock('jszip');
 
 jest.mock('./layout/nfse-layout.builder', () => {
-  const buildDocumentMock = jest.fn().mockReturnValue({ content: [] });
+  const buildDocumentMock = jest.fn().mockResolvedValue({ content: [] });
 
   class NfseLayoutBuilder {
     static fonts = {
@@ -99,7 +119,6 @@ jest.mock('./layout/nfse-layout.builder', () => {
   return { __esModule: true, NfseLayoutBuilder, buildDocumentMock };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const { buildDocumentMock: buildDocMock } = jest.requireMock(
   './layout/nfse-layout.builder',
 );
@@ -119,21 +138,22 @@ function nota(overrides: Partial<NfseData> = {}): NfseData {
   } as unknown as NfseData;
 }
 
-describe('PdfService', () => {
+describe('PdfService (streams + wrappers)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('throws if nfseDataList is empty or not an array', async () => {
+  it('lança erro se a lista estiver vazia (single/multiple)', async () => {
     const svc = new PdfService();
-    await expect(svc.generatePdf([] as unknown as NfseData[])).rejects.toThrow(
-      /lista de NFS-e.*vazia/i,
-    );
-    // @ts-expect-error teste proposital com tipo inválido
-    await expect(svc.generatePdf(null)).rejects.toThrow(/vazia/i);
+    await expect(
+      svc.generateSinglePdfStream([] as unknown as NfseData[]),
+    ).rejects.toThrow(/lista de NFS-e.*vazia/i);
+
+    // @ts-expect-error intenção: tipo inválido
+    await expect(svc.generateZipStream(null)).rejects.toThrow(/vazia/i);
   });
 
-  it('initializes pdfmake in the constructor once per service instance (single mode)', async () => {
+  it('inicializa pdfmake no construtor e gera PDF via wrapper de buffer (single)', async () => {
     const svc = new PdfService();
 
     expect(pdfmakeCtor).toHaveBeenCalledTimes(1);
@@ -143,18 +163,18 @@ describe('PdfService', () => {
 
     const list = [nota(), nota()];
 
-    const buf1 = await svc.generatePdf(list, { mode: 'single' });
+    const buf1 = await svc.generateSinglePdfBuffer(list);
     expect(Buffer.isBuffer(buf1)).toBe(true);
     expect(buf1.toString()).toBe('PDF');
 
-    const buf2 = await svc.generatePdf(list, { mode: 'single' });
+    const buf2 = await svc.generateSinglePdfBuffer(list);
     expect(buf2.toString()).toBe('PDF');
 
     expect(pdfmakeCtor).toHaveBeenCalledTimes(1);
     expect(buildDocMock).toHaveBeenCalledWith(list, true);
   });
 
-  it('returns a zipped buffer in multiple mode and uses default filenames', async () => {
+  it('retorna ZIP (buffer) no modo multiple e usa filenames padrão saneados', async () => {
     const svc = new PdfService();
     const list = [
       nota({
@@ -170,32 +190,32 @@ describe('PdfService', () => {
       }),
     ];
 
-    const out = await svc.generatePdf(list, { mode: 'multiple' });
+    const out = await svc.generateZipBuffer(list);
     expect(Buffer.isBuffer(out)).toBe(true);
     expect(out.toString()).toBe('ZIP_BUFFER');
 
     expect(jszipFileSpy).toHaveBeenCalledTimes(3);
-    expect(jszipFileSpy).toHaveBeenNthCalledWith(
-      1,
-      'nfse-111.pdf',
-      expect.any(Buffer),
-    );
-    expect(jszipFileSpy).toHaveBeenNthCalledWith(
-      2,
-      'nfse-RPS-77.pdf',
-      expect.any(Buffer),
-    );
-    expect(jszipFileSpy).toHaveBeenNthCalledWith(
-      3,
-      'nfse-3.pdf',
-      expect.any(Buffer),
-    );
+
+    {
+      const [name, streamArg, opts] = jszipFileSpy.mock.calls[0];
+      expect(name).toBe('nfse-111.pdf');
+      expect(typeof streamArg?.on).toBe('function');
+      expect(opts).toMatchObject({ binary: true });
+    }
+    {
+      const [name] = jszipFileSpy.mock.calls[1];
+      expect(name).toBe('nfse-RPS-77.pdf');
+    }
+    {
+      const [name] = jszipFileSpy.mock.calls[2];
+      expect(name).toBe('nfse-3.pdf');
+    }
 
     expect(buildDocMock).toHaveBeenCalledTimes(3);
     expect(buildDocMock).toHaveBeenNthCalledWith(1, [list[0]]);
   });
 
-  it('uses custom filenameFor when provided (multiple mode)', async () => {
+  it('usa filenameFor customizado (multiple)', async () => {
     const svc = new PdfService();
     const list = [nota(), nota()];
 
@@ -203,22 +223,18 @@ describe('PdfService', () => {
       .fn()
       .mockImplementation((_n, i) => `custom_${i + 10}.pdf`);
 
-    await svc.generatePdf(list, { mode: 'multiple', filenameFor });
+    await svc.generateZipBuffer(list, { filenameFor });
 
     expect(filenameFor).toHaveBeenCalledTimes(2);
-    expect(jszipFileSpy).toHaveBeenNthCalledWith(
-      1,
-      'custom_10.pdf',
-      expect.any(Buffer),
-    );
-    expect(jszipFileSpy).toHaveBeenNthCalledWith(
-      2,
-      'custom_11.pdf',
-      expect.any(Buffer),
-    );
+
+    const [n1] = jszipFileSpy.mock.calls[0];
+    const [n2] = jszipFileSpy.mock.calls[1];
+
+    expect(n1).toBe('custom_10.pdf');
+    expect(n2).toBe('custom_11.pdf');
   });
 
-  it('propagates pdf emitter error when creating a single PDF', async () => {
+  it('propaga erro do emitter do PDF ao gerar single (buffer wrapper)', async () => {
     pdfmakeCtor.mockImplementationOnce((_fonts: unknown) => {
       void _fonts;
       const failingCreatePdf: CreatePdfMock = jest
@@ -228,22 +244,20 @@ describe('PdfService', () => {
     });
 
     const svc = new PdfService();
-    await expect(svc.generatePdf([nota()], { mode: 'single' })).rejects.toThrow(
+    await expect(svc.generateSinglePdfBuffer([nota()])).rejects.toThrow(
       /pdf error from emitter/i,
     );
   });
 
-  it('sanitizes default filenames (non-alphanumeric -> underscore) in multiple mode', async () => {
+  it('saneia nomes padrão com caracteres não-alfanuméricos (multiple)', async () => {
     const svc = new PdfService();
     const weird = nota({
       ChaveNFe: { NumeroNFe: '12/3 ABC*' } as unknown as NfseData['ChaveNFe'],
     });
-    await svc.generatePdf([weird], { mode: 'multiple' });
+    await svc.generateZipBuffer([weird]);
 
-    expect(jszipFileSpy).toHaveBeenCalledWith(
-      'nfse-12_3_ABC_.pdf',
-      expect.any(Buffer),
-    );
+    const [name] = jszipFileSpy.mock.calls[0];
+    expect(name).toBe('nfse-12_3_ABC_.pdf');
   });
 });
 
@@ -253,7 +267,7 @@ describe('PdfService constructor failure', () => {
     jest.clearAllMocks();
   });
 
-  it('throws a wrapped error if PdfPrinter constructor fails', () => {
+  it('lança erro encapsulado se o construtor do PdfPrinter falhar', () => {
     pdfmakeCtor.mockImplementationOnce((_fonts: unknown) => {
       throw new Error('failed to load pdfmake');
     });

@@ -1,7 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Response } from 'express';
-import { NfseDto } from '../dto/nfse.dto';
-import { NfseService } from '../services/nfse.service';
-import { PdfGenerationMode } from '../../shared/pdf/pdf.service';
+import { Readable } from 'stream';
+import type { NfseDto } from '../dto/nfse.dto';
+import type { NfseService } from '../services/nfse.service';
+import type { PdfGenerationMode } from '../../shared/pdf/pdf.service';
 
 export class NfseControllerHelpers {
   private constructor() {}
@@ -14,13 +17,13 @@ export class NfseControllerHelpers {
     return body.zipName?.trim() || 'notas.zip';
   }
 
-  static async generateBuffer(
+  static async generateStream(
     nfseService: NfseService,
     body: NfseDto,
     mode: PdfGenerationMode,
     zipName: string,
-  ): Promise<Buffer> {
-    return nfseService.processNfse(body, { mode, zipName });
+  ): Promise<Readable> {
+    return nfseService.generateStream(body, { mode, zipName });
   }
 
   static setResponseHeaders(
@@ -37,7 +40,21 @@ export class NfseControllerHelpers {
     }
   }
 
-  static sendBuffer(res: Response, buffer: Buffer) {
-    return res.send(buffer);
+  static pipe(res: Response, stream: Readable): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      stream.once('error', (err) => {
+        if (!res.headersSent) {
+          res.status(500).send('Falha ao gerar arquivo.');
+        } else {
+          (res as any).destroy?.(err);
+        }
+        reject(err instanceof Error ? err : new Error('Stream error'));
+      });
+
+      res.once('finish', () => resolve());
+      res.once('close', () => resolve());
+
+      stream.pipe(res);
+    });
   }
 }
