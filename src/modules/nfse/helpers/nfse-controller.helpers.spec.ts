@@ -4,8 +4,7 @@ import { EventEmitter } from 'events';
 import { Readable } from 'stream';
 import { Response } from 'express';
 import { NfseControllerHelpers as H } from './nfse-controller.helpers';
-import type { PdfGenerationMode } from '../../shared/pdf/pdf.service';
-import type { NfseService } from '../services/nfse.service';
+import type { PdfGenerationMode, PdfService } from '../services/pdf.service';
 import type { NfseDto } from '../dto/nfse.dto';
 
 const makeDto = (overrides: Partial<NfseDto> = {}): NfseDto => ({
@@ -52,7 +51,7 @@ const makeResponse = () => {
 const makeService = () => {
   return {
     generateStream: jest.fn(),
-  } as unknown as Pick<NfseService, 'generateStream'> & {
+  } as unknown as Pick<PdfService, 'generateStream'> & {
     generateStream: jest.Mock;
   };
 };
@@ -97,7 +96,7 @@ describe('NfseControllerHelpers (stream version)', () => {
       svc.generateStream.mockResolvedValueOnce(stream);
 
       const out = await H.generateStream(
-        svc as unknown as NfseService,
+        svc as unknown as PdfService,
         body,
         mode,
         zipName,

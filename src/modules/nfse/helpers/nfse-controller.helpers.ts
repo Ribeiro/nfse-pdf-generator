@@ -3,8 +3,7 @@
 import { Response } from 'express';
 import { Readable } from 'stream';
 import type { NfseDto } from '../dto/nfse.dto';
-import type { NfseService } from '../services/nfse.service';
-import type { PdfGenerationMode } from '../../shared/pdf/pdf.service';
+import type { PdfGenerationMode, PdfService } from '../services/pdf.service';
 
 export class NfseControllerHelpers {
   private constructor() {}
@@ -18,12 +17,12 @@ export class NfseControllerHelpers {
   }
 
   static async generateStream(
-    nfseService: NfseService,
+    pdfService: PdfService,
     body: NfseDto,
     mode: PdfGenerationMode,
     zipName: string,
   ): Promise<Readable> {
-    return nfseService.generateStream(body, { mode, zipName });
+    return pdfService.generateStream(body, { mode, zipName });
   }
 
   static setResponseHeaders(
