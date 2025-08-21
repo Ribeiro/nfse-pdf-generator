@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
-import { NfseController } from './modules/nfse/controller/nfse.controller';
-import { PdfService } from './modules/nfse/services/pdf.service';
+import { NfseModule } from './modules/nfse/nfse.module';
 
 @Module({
-  imports: [],
-  controllers: [NfseController],
-  providers: [PdfService],
+  imports: [NfseModule],
 })
 export class AppModule {}

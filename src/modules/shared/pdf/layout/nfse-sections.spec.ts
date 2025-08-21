@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import type { AssetLoader } from './asset-loader';
+import type { AssetLoader, IMunicipioResolver } from './asset-loader';
 import { NfseSections } from './nfse-sections';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { PdfLayouts } from './layouts';
@@ -191,7 +192,6 @@ describe('NfseSections', () => {
     preloadMock.mockResolvedValue(undefined);
 
     const loadMunicipioLogoDataUrl: jest.MockedFunction<(c: string) => string> =
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       jest.fn((c: string) => 'data:image/png;base64,LOGO');
     const loadBrandLogoDataUrl: jest.MockedFunction<() => string> = jest.fn(
       () => 'data:image/png;base64,BRAND',
@@ -202,7 +202,12 @@ describe('NfseSections', () => {
       loadBrandLogoDataUrl,
     };
 
-    sections = new NfseSections(assets as unknown as AssetLoader);
+    const municipio: IMunicipioResolver = {
+      preload: preloadMock,
+      resolveName: resolveNameMock,
+    };
+
+    sections = new NfseSections(assets as unknown as AssetLoader, municipio);
   });
 
   describe('header', () => {

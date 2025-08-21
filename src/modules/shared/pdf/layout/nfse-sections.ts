@@ -1,25 +1,25 @@
 import { PdfLayouts } from './layouts';
 import { ValueFormat as Fmt } from './value-format';
-import {
-  MunicipioResolver,
-  type AssetLoader,
-  type IMunicipioResolver,
-} from './asset-loader';
+import { type AssetLoader, type IMunicipioResolver } from './asset-loader';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { Content, TableCell } from '../types';
+import {
+  ASSET_LOADER_TOKEN,
+  MUNICIPIO_RESOLVER_TOKEN,
+} from '../providers/nfse-infrastructure.provider';
+import { Inject, Injectable } from '@nestjs/common';
 
 type MarginsTuple = [number, number, number, number];
 
+@Injectable()
 export class NfseSections {
   static readonly NUMBER_BOX_WIDTH = 140;
 
-  private readonly municipio: IMunicipioResolver;
-
   constructor(
-    private assets: AssetLoader,
-    municipio?: IMunicipioResolver,
+    @Inject(ASSET_LOADER_TOKEN) private readonly assets: AssetLoader,
+    @Inject(MUNICIPIO_RESOLVER_TOKEN)
+    private readonly municipio: IMunicipioResolver,
   ) {
-    this.municipio = municipio ?? MunicipioResolver.fromEnv();
     void this.municipio.preload();
   }
 

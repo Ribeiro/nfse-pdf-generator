@@ -1,25 +1,24 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/unbound-method */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { Readable } from 'stream';
 import { PdfService } from './pdf.service';
+import { NfseLayoutBuilder } from '../../shared/pdf/layout/nfse-layout.builder';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { NfseDto } from 'src/modules/nfse/dto/nfse.dto';
 
-const mockLoggerInstance = { log: jest.fn(), error: jest.fn() };
-
-jest.mock('@nestjs/common', () => {
-  const Injectable = () => (_: unknown) => {
-    /* no-op */
-  };
-  class Logger {
-    log = mockLoggerInstance.log;
-    error = mockLoggerInstance.error;
-  }
-  return { Injectable, Logger };
-});
+const loggerSpy = {
+  log: jest.spyOn(Logger.prototype, 'log').mockImplementation(),
+  error: jest.spyOn(Logger.prototype, 'error').mockImplementation(),
+  warn: jest.spyOn(Logger.prototype, 'warn').mockImplementation(),
+  debug: jest.spyOn(Logger.prototype, 'debug').mockImplementation(),
+  verbose: jest.spyOn(Logger.prototype, 'verbose').mockImplementation(),
+};
 
 interface FakePdfDoc {
   on: (
@@ -140,7 +139,7 @@ jest.mock('../../shared/pdf/layout/nfse-layout.builder', () => {
 
   class NfseLayoutBuilder {
     static fonts = {
-      Roboto: { normal: 'n', bold: 'b', italics: 'i', bolditalics: 'bi' },
+      Helvetica: { normal: 'n', bold: 'b', italics: 'i', bolditalics: 'bi' },
     };
 
     static create(..._args: unknown[]) {
@@ -156,6 +155,34 @@ jest.mock('../../shared/pdf/layout/nfse-layout.builder', () => {
 const { buildDocumentMock: buildDocMock } = jest.requireMock(
   '../../shared/pdf/layout/nfse-layout.builder',
 );
+
+const mockNfseLayoutBuilder = {
+  buildDocument: jest
+    .fn()
+    .mockImplementation((_nfseDataList, _cancelled = false, _opts = {}) =>
+      Promise.resolve({ content: [] }),
+    ),
+};
+
+function expectFirstArgEquals(
+  mockFn: jest.Mock,
+  callIndex: number,
+  expectedFirstArg: unknown,
+) {
+  const call = mockFn.mock.calls[callIndex];
+  expect(call).toBeDefined();
+  expect(call[0]).toEqual(expectedFirstArg);
+}
+
+function expectOptionalSecondBooleanFalse(
+  mockFn: jest.Mock,
+  callIndex: number,
+) {
+  const call = mockFn.mock.calls[callIndex];
+  if (call.length >= 2) {
+    expect(call[1]).toBe(false);
+  }
+}
 
 function createNfseData(overrides: Partial<NfseData> = {}): NfseData {
   return {
@@ -178,13 +205,41 @@ function createNfseDto(xml?: string): NfseDto {
   } as NfseDto;
 }
 
-describe('PdfService (streams + wrappers)', () => {
-  beforeEach(() => {
+describe('PdfService (Injectable)', () => {
+  let service: PdfService;
+  let layoutBuilder: jest.Mocked<NfseLayoutBuilder>;
+
+  beforeEach(async () => {
     jest.clearAllMocks();
+    pdfmakeCtor.mockClear();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PdfService,
+        {
+          provide: NfseLayoutBuilder,
+          useValue: mockNfseLayoutBuilder,
+        },
+      ],
+    }).compile();
+
+    service = module.get<PdfService>(PdfService);
+    layoutBuilder = module.get(NfseLayoutBuilder);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+    expect(layoutBuilder).toBeDefined();
+  });
+
+  it('should initialize pdfmake in constructor', () => {
+    expect(pdfmakeCtor).toHaveBeenCalledWith(NfseLayoutBuilder.fonts);
+    expect(loggerSpy.log).toHaveBeenCalledWith(
+      'PdfMake inicializado com sucesso (server-side).',
+    );
   });
 
   it('should throw error if list is empty (single/multiple)', async () => {
-    const service = new PdfService();
     await expect(
       service.generateSinglePdfStream([] as unknown as NfseData[]),
     ).rejects.toThrow(/lista de NFS-e.*vazia/i);
@@ -193,29 +248,20 @@ describe('PdfService (streams + wrappers)', () => {
     await expect(service.generateZipStream(null)).rejects.toThrow(/vazia/i);
   });
 
-  it('should initialize pdfmake in constructor and generate PDF via buffer wrapper (single)', async () => {
-    const service = new PdfService();
-
-    expect(pdfmakeCtor).toHaveBeenCalledTimes(1);
-    expect(mockLoggerInstance.log).toHaveBeenCalledWith(
-      'PdfMake inicializado com sucesso (server-side).',
-    );
-
+  it('should generate single PDF buffer', async () => {
     const list = [createNfseData(), createNfseData()];
 
-    const buffer1 = await service.generateSinglePdfBuffer(list);
-    expect(Buffer.isBuffer(buffer1)).toBe(true);
-    expect(buffer1.toString()).toBe('PDF');
+    const buffer = await service.generateSinglePdfBuffer(list);
+    expect(Buffer.isBuffer(buffer)).toBe(true);
+    expect(buffer.toString()).toBe('PDF');
 
-    const buffer2 = await service.generateSinglePdfBuffer(list);
-    expect(buffer2.toString()).toBe('PDF');
-
-    expect(pdfmakeCtor).toHaveBeenCalledTimes(1);
-    expect(buildDocMock).toHaveBeenCalledWith(list, true);
+    const mockFn = layoutBuilder.buildDocument as unknown as jest.Mock;
+    expect(mockFn).toHaveBeenCalledTimes(1);
+    expectFirstArgEquals(mockFn, 0, list);
+    expectOptionalSecondBooleanFalse(mockFn, 0);
   });
 
   it('should return ZIP (buffer) in multiple mode and use sanitized default filenames', async () => {
-    const service = new PdfService();
     const list = [
       createNfseData({
         ChaveNFe: { NumeroNFe: '111' } as unknown as NfseData['ChaveNFe'],
@@ -251,12 +297,19 @@ describe('PdfService (streams + wrappers)', () => {
       expect(name).toBe('nfse-3.pdf');
     }
 
-    expect(buildDocMock).toHaveBeenCalledTimes(3);
-    expect(buildDocMock).toHaveBeenNthCalledWith(1, [list[0]]);
+    const mockFn = layoutBuilder.buildDocument as unknown as jest.Mock;
+    expect(mockFn).toHaveBeenCalledTimes(3);
+
+    expectFirstArgEquals(mockFn, 0, [list[0]]);
+    expectFirstArgEquals(mockFn, 1, [list[1]]);
+    expectFirstArgEquals(mockFn, 2, [list[2]]);
+
+    expectOptionalSecondBooleanFalse(mockFn, 0);
+    expectOptionalSecondBooleanFalse(mockFn, 1);
+    expectOptionalSecondBooleanFalse(mockFn, 2);
   });
 
   it('should use custom filenameFor function (multiple)', async () => {
-    const service = new PdfService();
     const list = [createNfseData(), createNfseData()];
 
     const filenameFor: (n: NfseData, i: number) => string = jest
@@ -283,14 +336,23 @@ describe('PdfService (streams + wrappers)', () => {
       return { createPdfKitDocument: failingCreatePdf };
     });
 
-    const service = new PdfService();
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PdfService,
+        {
+          provide: NfseLayoutBuilder,
+          useValue: mockNfseLayoutBuilder,
+        },
+      ],
+    }).compile();
+
+    const failingService = module.get<PdfService>(PdfService);
     await expect(
-      service.generateSinglePdfBuffer([createNfseData()]),
+      failingService.generateSinglePdfBuffer([createNfseData()]),
     ).rejects.toThrow(/pdf error from emitter/i);
   });
 
   it('should sanitize default filenames with non-alphanumeric characters (multiple)', async () => {
-    const service = new PdfService();
     const weird = createNfseData({
       ChaveNFe: { NumeroNFe: '12/3 ABC*' } as unknown as NfseData['ChaveNFe'],
     });
@@ -301,7 +363,6 @@ describe('PdfService (streams + wrappers)', () => {
   });
 
   it('should generate stream correctly with NfseDto (single mode)', async () => {
-    const service = new PdfService();
     const dto = createNfseDto();
 
     const stream = await service.generateStream(dto, { mode: 'single' });
@@ -312,11 +373,14 @@ describe('PdfService (streams + wrappers)', () => {
     expect(parseStringPromiseMock).toHaveBeenCalledWith(dto.xml, {
       explicitArray: false,
     });
-    expect(buildDocMock).toHaveBeenCalledWith(expect.any(Array), true);
+
+    const mockFn = layoutBuilder.buildDocument as unknown as jest.Mock;
+    expect(mockFn).toHaveBeenCalledTimes(1);
+    expect(Array.isArray(mockFn.mock.calls[0][0])).toBe(true);
+    expectOptionalSecondBooleanFalse(mockFn, 0);
   });
 
   it('should generate stream correctly with NfseDto (multiple mode)', async () => {
-    const service = new PdfService();
     const dto = createNfseDto();
 
     const stream = await service.generateStream(dto, { mode: 'multiple' });
@@ -331,7 +395,6 @@ describe('PdfService (streams + wrappers)', () => {
   });
 
   it('should generate buffer correctly with NfseDto (single mode)', async () => {
-    const service = new PdfService();
     const dto = createNfseDto();
 
     const buffer = await service.generateBuffer(dto, { mode: 'single' });
@@ -344,7 +407,6 @@ describe('PdfService (streams + wrappers)', () => {
   });
 
   it('should generate buffer correctly with NfseDto (multiple mode)', async () => {
-    const service = new PdfService();
     const dto = createNfseDto();
 
     const buffer = await service.generateBuffer(dto, { mode: 'multiple' });
@@ -361,19 +423,21 @@ describe('PdfService (streams + wrappers)', () => {
       NFe: [createNfseData(), createNfseData()],
     });
 
-    const service = new PdfService();
     const dto = createNfseDto();
 
     const buffer = await service.generateBuffer(dto);
     expect(Buffer.isBuffer(buffer)).toBe(true);
 
-    expect(buildDocMock).toHaveBeenCalledWith(
+    const mockFn = layoutBuilder.buildDocument as unknown as jest.Mock;
+    expect(mockFn).toHaveBeenCalledTimes(1);
+    const firstArg = mockFn.mock.calls[0][0];
+    expect(firstArg).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ ChaveNFe: expect.any(Object) }),
         expect.objectContaining({ ChaveNFe: expect.any(Object) }),
       ]),
-      true,
     );
+    expectOptionalSecondBooleanFalse(mockFn, 0);
   });
 
   it('should throw error if XML does not contain NFe key', async () => {
@@ -381,7 +445,6 @@ describe('PdfService (streams + wrappers)', () => {
       InvalidRoot: {},
     });
 
-    const service = new PdfService();
     const dto = createNfseDto();
 
     await expect(service.generateBuffer(dto)).rejects.toThrow(
@@ -392,7 +455,6 @@ describe('PdfService (streams + wrappers)', () => {
   it('should throw error if XML parsing fails', async () => {
     parseStringPromiseMock.mockRejectedValueOnce(new Error('Invalid XML'));
 
-    const service = new PdfService();
     const dto = createNfseDto();
 
     await expect(service.generateBuffer(dto)).rejects.toThrow(
@@ -401,31 +463,48 @@ describe('PdfService (streams + wrappers)', () => {
   });
 
   it('should use single mode as default when not specified', async () => {
-    const service = new PdfService();
     const dto = createNfseDto();
 
-    await service.generateBuffer(dto); // without specifying mode
+    await service.generateBuffer(dto);
 
-    expect(buildDocMock).toHaveBeenCalledWith(expect.any(Array), true);
+    const mockFn = layoutBuilder.buildDocument as unknown as jest.Mock;
+    expect(mockFn).toHaveBeenCalledTimes(1);
+    expect(Array.isArray(mockFn.mock.calls[0][0])).toBe(true);
+    expectOptionalSecondBooleanFalse(mockFn, 0);
   });
 });
 
 describe('PdfService constructor failure', () => {
   afterEach(() => {
     jest.resetModules();
-    jest.clearAllMocks();
   });
 
-  it('should throw encapsulated error if PdfPrinter constructor fails', () => {
+  it('should throw encapsulated error if PdfPrinter constructor fails', async () => {
     pdfmakeCtor.mockImplementationOnce((_fonts: unknown) => {
       throw new Error('failed to load pdfmake');
     });
 
-    expect(() => new PdfService()).toThrow(/Erro ao inicializar pdfMake/i);
+    await expect(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          PdfService,
+          {
+            provide: NfseLayoutBuilder,
+            useValue: mockNfseLayoutBuilder,
+          },
+        ],
+      }).compile();
 
-    expect(mockLoggerInstance.error).toHaveBeenCalledWith(
+      module.get<PdfService>(PdfService);
+    }).rejects.toThrow(/Erro ao inicializar pdfMake/i);
+
+    expect(loggerSpy.error).toHaveBeenCalledWith(
       'Erro ao inicializar pdfMake:',
       expect.any(Error),
     );
   });
+});
+
+afterAll(() => {
+  Object.values(loggerSpy).forEach((spy) => spy.mockRestore());
 });

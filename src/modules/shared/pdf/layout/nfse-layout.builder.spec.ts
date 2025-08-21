@@ -90,6 +90,17 @@ const stylesMod = jest.requireMock('./nfse-styles');
 const qrMod = jest.requireMock('./qr.service');
 const watermarkMod = jest.requireMock('./watermark');
 
+// Helper para instanciar o builder SEM depender de um método estático inexistente
+const makeBuilder = (): NfseLayoutBuilder => {
+  const SectionsClass = sectionsMod.NfseSections as unknown as new (
+    ...args: any[]
+  ) => any;
+  const QrClass = qrMod.NfseQrService as unknown as new (...args: any[]) => any;
+  const sections = new SectionsClass({}); // mock aceita 1 arg; extra args seriam ignorados
+  const qr = new QrClass();
+  return new NfseLayoutBuilder(sections, qr);
+};
+
 const makeNota = (overrides: Partial<NfseData> = {}): NfseData =>
   ({
     ChaveNFe: { NumeroNFe: '1' },
@@ -102,7 +113,7 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('buildNotaContent returns the 7 sections in order', async () => {
-    const b = await NfseLayoutBuilder.create();
+    const b = makeBuilder();
     const content = await b.buildNotaContent(makeNota());
 
     expect(content).toEqual([
@@ -125,31 +136,31 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('buildDocument composes content for multiple notes and inserts page breaks between them', async () => {
-    const b = await NfseLayoutBuilder.create();
+    const b = makeBuilder();
     const n1 = makeNota();
     const n2 = makeNota({ ChaveNFe: { NumeroNFe: '2' } as any });
 
     const doc = await b.buildDocument([n1, n2]);
 
     expect(Array.isArray(doc.content)).toBe(true);
-    expect(doc.content).toHaveLength(15);
+    expect(doc.content).toHaveLength(15); // 7 + 1 (pageBreak) + 7
 
     expect(doc.content?.[7]).toEqual({ text: ' ', pageBreak: 'after' });
   });
 
   it('sets A4 page size, margins (with bottom >= QR box), default style, and uses nfseStyles', async () => {
-    const b = await NfseLayoutBuilder.create();
+    const b = makeBuilder();
     const doc = await b.buildDocument([makeNota()]);
 
     expect(doc.pageSize).toBe('A4');
-    expect(doc.pageMargins).toEqual([18, 16, 18, 76]);
+    expect(doc.pageMargins).toEqual([18, 16, 18, 76]); // 64 + 12
 
     expect(doc.defaultStyle).toEqual({ font: 'Helvetica', fontSize: 10 });
     expect(doc.styles).toBe(stylesMod.nfseStyles);
   });
 
   it('footer shows QR only on the first page and only if QR value exists', async () => {
-    const b = await NfseLayoutBuilder.create();
+    const b = makeBuilder();
     const nota = makeNota();
     const doc = await b.buildDocument([nota]);
 
@@ -173,7 +184,7 @@ describe('NfseLayoutBuilder', () => {
   });
 
   it('adds cancelled header when cancelled flag is true', async () => {
-    const b = await NfseLayoutBuilder.create();
+    const b = makeBuilder();
     const doc = await b.buildDocument([makeNota()], true);
 
     expect(watermarkMod.makeCancelledOverlayHeader).toHaveBeenCalledTimes(1);

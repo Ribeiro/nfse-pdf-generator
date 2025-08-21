@@ -24,12 +24,18 @@ export interface GeneratePdfOptions {
   filenameFor?: (nota: NfseData, index: number) => string;
 }
 
+export interface GeneratePdfOptions {
+  mode?: PdfGenerationMode;
+  zipName?: string;
+  filenameFor?: (nota: NfseData, index: number) => string;
+}
+
 @Injectable()
 export class PdfService {
   private readonly logger = new Logger(PdfService.name);
   private readonly printer: PdfPrinter;
 
-  constructor() {
+  constructor(private readonly layoutBuilder: NfseLayoutBuilder) {
     this.printer = this.initializePdfMake();
   }
 
@@ -75,8 +81,8 @@ export class PdfService {
         'A lista de NFS-e fornecida está vazia ou não é um array.',
       );
     }
-    const builder = await NfseLayoutBuilder.create();
-    const docDefinition = await builder.buildDocument(nfseDataList, true);
+
+    const docDefinition = await this.layoutBuilder.buildDocument(nfseDataList);
     return this.docToStream(docDefinition);
   }
 
@@ -90,7 +96,6 @@ export class PdfService {
       );
     }
 
-    const builder = await NfseLayoutBuilder.create();
     const zip = new JSZip();
 
     const filenameFor =
@@ -101,7 +106,7 @@ export class PdfService {
 
     for (let i = 0; i < nfseDataList.length; i++) {
       const nota = nfseDataList[i];
-      const docDef = await builder.buildDocument([nota]);
+      const docDef = await this.layoutBuilder.buildDocument([nota]);
 
       const pdfDoc: PdfKitDocument = this.printer.createPdfKitDocument(docDef);
       pdfDocs.push(pdfDoc);

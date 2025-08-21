@@ -6,14 +6,15 @@ import type {
 import { nfseStyles } from './nfse-styles';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { NfseSections } from './nfse-sections';
-import { createNfseInfraFromEnv, type AssetLoader } from './asset-loader';
 import { NfseQrService } from './qr.service';
 import { makeCancelledOverlayHeader } from './watermark';
+import { Injectable } from '@nestjs/common';
 
 export interface BuildOptions {
   header?: { orgName?: string; deptName?: string; docTitle?: string };
 }
 
+@Injectable()
 export class NfseLayoutBuilder {
   public static readonly fonts: FontDictionary = {
     Helvetica: {
@@ -36,26 +37,12 @@ export class NfseLayoutBuilder {
     },
   };
 
-  private readonly sections: NfseSections;
-  private readonly qr = new NfseQrService();
   private static readonly qrSize = 64;
 
-  private constructor(
-    private readonly opts: BuildOptions = {},
-    sections?: NfseSections,
-  ) {
-    this.sections =
-      sections ??
-      new NfseSections(
-        /* Default from env via NfseSections */ undefined as unknown as AssetLoader,
-      );
-  }
-
-  static async create(opts: BuildOptions = {}): Promise<NfseLayoutBuilder> {
-    const { assets, municipios } = await createNfseInfraFromEnv();
-    const sections = new NfseSections(assets, municipios);
-    return new NfseLayoutBuilder(opts, sections);
-  }
+  constructor(
+    private readonly sections: NfseSections,
+    private readonly qrService: NfseQrService,
+  ) {}
 
   public async buildNotaContent(n: NfseData): Promise<Content[]> {
     const [header, meta, prestador, tomador, discriminacao, valores, avisos] =
@@ -99,7 +86,7 @@ export class NfseLayoutBuilder {
       defaultStyle: { font: 'Helvetica', fontSize: 10 },
       footer: (currentPage: number): Content => {
         if (currentPage !== 1) return { text: '' };
-        const qrValue = first ? this.qr.buildQrValue(first) : null;
+        const qrValue = first ? this.qrService.buildQrValue(first) : null;
         if (!qrValue) return { text: '' };
         return {
           margin: [18, 2, 18, 6],

@@ -1,166 +1,194 @@
-/* eslint-disable @typescript-eslint/unbound-method */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+// src/shared/pdf/layout/qr.service.spec.ts
+import { Test, TestingModule } from '@nestjs/testing';
 import { NfseQrService } from './qr.service';
-import { ValueFormat as Fmt } from './value-format';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 
+// Mock do ValueFormat
 jest.mock('./value-format', () => ({
   ValueFormat: {
-    first: jest.fn((v: unknown) =>
-      typeof v === 'string' && v.length > 0 ? v : 'Não informado',
-    ),
-    decodeBase64ToUtf8: jest.fn((s: string) => s),
+    first: jest.fn(),
+    decodeBase64ToUtf8: jest.fn(),
   },
 }));
 
-type ChaveNFe = NonNullable<NfseData['ChaveNFe']>;
-type ChaveRPS = NonNullable<NfseData['ChaveRPS']>;
+const { ValueFormat: MockValueFormat } = jest.requireMock('./value-format');
 
-function makeData(overrides: Partial<NfseData> = {}): NfseData {
-  const base: NfseData = {
+function createNfseData(overrides: Partial<NfseData> = {}): NfseData {
+  return {
     ChaveNFe: {
-      NumeroNFe: '123',
-      CodigoVerificacao: 'ABCD',
-      InscricaoPrestador: '98765',
-    } as ChaveNFe,
+      NumeroNFe: '123456',
+      CodigoVerificacao: 'ABC123',
+      InscricaoPrestador: '987654321',
+    },
     ChaveRPS: {
-      NumeroRPS: 'RPS-1',
-      InscricaoPrestador: '55555',
-    } as ChaveRPS,
-    Assinatura: 'c29tZSBiYXNlNjQ=',
+      NumeroRPS: 'RPS-789',
+      InscricaoPrestador: '123456789',
+    },
+    Assinatura: 'aGVsbG8gd29ybGQ=', // "hello world" em base64
+    ...overrides,
   } as unknown as NfseData;
-
-  return { ...base, ...overrides } as NfseData;
 }
 
 describe('NfseQrService', () => {
-  let svc: NfseQrService;
-  const firstMock = Fmt.first as jest.MockedFunction<typeof Fmt.first>;
-  const decodeMock = Fmt.decodeBase64ToUtf8 as jest.MockedFunction<
-    typeof Fmt.decodeBase64ToUtf8
-  >;
+  let service: NfseQrService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [NfseQrService],
+    }).compile();
+
+    service = module.get<NfseQrService>(NfseQrService);
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
-    svc = new NfseQrService();
   });
 
-  describe('buildQrValue - URL construction', () => {
-    it('builds the SP Prefeitura URL when inscricao, nf and verificacao are present on NFe', () => {
-      const n = makeData();
-      const out = svc.buildQrValue(n);
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
 
-      const inscricao = String(n.ChaveNFe?.InscricaoPrestador ?? '');
-      const nf = String(n.ChaveNFe?.NumeroNFe ?? '');
-      const verificacao = String(n.ChaveNFe?.CodigoVerificacao ?? '');
-
-      const expected =
-        `${NfseQrService.PREF_SP_URL}?` +
-        `inscricao=${encodeURIComponent(inscricao)}` +
-        `&nf=${encodeURIComponent(nf)}` +
-        `&verificacao=${encodeURIComponent(verificacao)}`;
-
-      expect(out).toBe(expected);
-      expect(firstMock).not.toHaveBeenCalled();
-      expect(decodeMock).not.toHaveBeenCalled();
-    });
-
-    it('uses RPS.inscricao when NFe.inscricao is missing', () => {
-      const n = makeData({
+  describe('buildQrValue', () => {
+    it('should build QR URL when all required fields are present', () => {
+      const nfseData = createNfseData({
         ChaveNFe: {
-          NumeroNFe: '999',
-          CodigoVerificacao: 'ZZZ9',
-          // InscricaoPrestador intentionally omitted
-        } as unknown as ChaveNFe,
-        ChaveRPS: {
-          InscricaoPrestador: '424242',
-        } as unknown as ChaveRPS,
+          NumeroNFe: '123456',
+          CodigoVerificacao: 'ABC123',
+          InscricaoPrestador: '987654321',
+        },
       });
 
-      const out = svc.buildQrValue(n);
-      const expected = `${NfseQrService.PREF_SP_URL}?inscricao=424242&nf=999&verificacao=ZZZ9`;
+      const result = service.buildQrValue(nfseData);
 
-      expect(out).toBe(expected);
+      expect(result).toBe(
+        'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx?inscricao=987654321&nf=123456&verificacao=ABC123',
+      );
     });
 
-    it('returns null when URL data is absent and Assinatura is "Não informado"', () => {
-      firstMock.mockReturnValueOnce('Não informado');
+    it('should use ChaveRPS inscricao when ChaveNFe inscricao is not available', () => {
+      const nfseData = createNfseData({
+        ChaveNFe: {
+          NumeroNFe: '123456',
+          CodigoVerificacao: 'ABC123',
+          InscricaoPrestador: undefined,
+        },
+        ChaveRPS: {
+          InscricaoPrestador: '555666777',
+        },
+      });
 
-      const n = makeData({
+      const result = service.buildQrValue(nfseData);
+
+      expect(result).toBe(
+        'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx?inscricao=555666777&nf=123456&verificacao=ABC123',
+      );
+    });
+
+    it('should fallback to Assinatura field when required NFe fields are missing', () => {
+      MockValueFormat.first.mockReturnValue('base64EncodedSignature');
+      MockValueFormat.decodeBase64ToUtf8.mockReturnValue(
+        'decoded signature content',
+      );
+
+      const nfseData = createNfseData({
+        ChaveNFe: {
+          NumeroNFe: undefined,
+          CodigoVerificacao: 'ABC123',
+          InscricaoPrestador: '987654321',
+        },
+        Assinatura: 'base64EncodedSignature',
+      });
+
+      const result = service.buildQrValue(nfseData);
+
+      expect(MockValueFormat.first).toHaveBeenCalledWith(
+        'base64EncodedSignature',
+      );
+      expect(MockValueFormat.decodeBase64ToUtf8).toHaveBeenCalledWith(
+        'base64EncodedSignature',
+      );
+      expect(result).toBe('decoded signature content');
+    });
+
+    it('should return raw signature when decoded signature is empty', () => {
+      MockValueFormat.first.mockReturnValue('rawSignature');
+      MockValueFormat.decodeBase64ToUtf8.mockReturnValue('   '); // whitespace only
+
+      const nfseData = createNfseData({
+        ChaveNFe: {
+          NumeroNFe: undefined,
+          CodigoVerificacao: 'ABC123',
+          InscricaoPrestador: '987654321',
+        },
+        Assinatura: 'rawSignature',
+      });
+
+      const result = service.buildQrValue(nfseData);
+
+      expect(result).toBe('rawSignature');
+    });
+
+    it('should return null when Assinatura is "Não informado"', () => {
+      MockValueFormat.first.mockReturnValue('Não informado');
+
+      const nfseData = createNfseData({
+        ChaveNFe: {
+          NumeroNFe: undefined,
+          CodigoVerificacao: 'ABC123',
+          InscricaoPrestador: '987654321',
+        },
+        Assinatura: 'Não informado',
+      });
+
+      const result = service.buildQrValue(nfseData);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when all required fields are missing and no valid signature', () => {
+      MockValueFormat.first.mockReturnValue('Não informado');
+
+      const nfseData = createNfseData({
         ChaveNFe: {
           NumeroNFe: undefined,
           CodigoVerificacao: undefined,
-        } as unknown as ChaveNFe,
+          InscricaoPrestador: undefined,
+        },
         ChaveRPS: {
           InscricaoPrestador: undefined,
-        } as unknown as ChaveRPS,
-        Assinatura: undefined,
+        },
       });
 
-      const out = svc.buildQrValue(n);
-      expect(out).toBeNull();
-      expect(firstMock).toHaveBeenCalledTimes(1);
-      expect(decodeMock).not.toHaveBeenCalled();
+      const result = service.buildQrValue(nfseData);
+
+      expect(result).toBeNull();
+    });
+
+    it('should handle URL encoding correctly', () => {
+      const nfseData = createNfseData({
+        ChaveNFe: {
+          NumeroNFe: '123/456',
+          CodigoVerificacao: 'ABC@123',
+          InscricaoPrestador: '987.654.321',
+        },
+      });
+
+      const result = service.buildQrValue(nfseData);
+
+      expect(result).toBe(
+        'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx?inscricao=987.654.321&nf=123%2F456&verificacao=ABC%40123',
+      );
     });
   });
 
-  describe('buildQrValue - Assinatura decoding path', () => {
-    it('decodes base64 Assinatura and trims it', () => {
-      firstMock.mockReturnValueOnce('BASE64_RAW');
-      decodeMock.mockReturnValueOnce('  https://ok  ');
-
-      const n = makeData({
-        ChaveNFe: {
-          NumeroNFe: undefined,
-          CodigoVerificacao: undefined,
-        } as unknown as ChaveNFe,
-        ChaveRPS: {
-          InscricaoPrestador: undefined,
-        } as unknown as ChaveRPS,
-        Assinatura: 'BASE64_RAW',
-      });
-
-      const out = svc.buildQrValue(n);
-      expect(firstMock).toHaveBeenCalledWith('BASE64_RAW');
-      expect(decodeMock).toHaveBeenCalledWith('BASE64_RAW');
-      expect(out).toBe('https://ok');
-    });
-
-    it('returns the raw value when decoded string is empty after trim', () => {
-      firstMock.mockReturnValueOnce('RAW_B64');
-      decodeMock.mockReturnValueOnce('   ');
-
-      const n = makeData({
-        ChaveNFe: {
-          NumeroNFe: undefined,
-          CodigoVerificacao: undefined,
-        } as unknown as ChaveNFe,
-        ChaveRPS: {
-          InscricaoPrestador: undefined,
-        } as unknown as ChaveRPS,
-        Assinatura: 'RAW_B64',
-      });
-
-      const out = svc.buildQrValue(n);
-      expect(out).toBe('RAW_B64');
-    });
-
-    it('handles a non-empty decoded payload without URL characters', () => {
-      firstMock.mockReturnValueOnce('ANY_B64');
-      decodeMock.mockReturnValueOnce('SOME TEXT');
-
-      const n = makeData({
-        ChaveNFe: {
-          NumeroNFe: undefined,
-          CodigoVerificacao: undefined,
-        } as unknown as ChaveNFe,
-        ChaveRPS: {
-          InscricaoPrestador: undefined,
-        } as unknown as ChaveRPS,
-        Assinatura: 'ANY_B64',
-      });
-
-      const out = svc.buildQrValue(n);
-      expect(out).toBe('SOME TEXT');
+  describe('static properties', () => {
+    it('should have correct PREF_SP_URL', () => {
+      expect(NfseQrService.PREF_SP_URL).toBe(
+        'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx',
+      );
     });
   });
 });

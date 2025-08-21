@@ -1,6 +1,8 @@
+import { Injectable } from '@nestjs/common';
 import { ValueFormat as Fmt } from './value-format';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 
+@Injectable()
 export class NfseQrService {
   static readonly PREF_SP_URL =
     'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx';
