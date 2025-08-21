@@ -1,11 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { ValueFormat as Fmt } from './value-format';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
+import {
+  PREFEITURA_URL_TOKEN,
+  PREFEITURA_URL_DEFAULT,
+} from '../providers/prefeitura-url.provider';
 
 @Injectable()
 export class NfseQrService {
-  static readonly PREF_SP_URL =
-    'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx';
+  static readonly PREF_SP_URL = PREFEITURA_URL_DEFAULT;
+
+  constructor(
+    @Inject(PREFEITURA_URL_TOKEN)
+    private readonly prefeituraUrl: string = NfseQrService.PREF_SP_URL,
+  ) {}
 
   buildQrValue(n: NfseData): string | null {
     const inscricao =
@@ -19,7 +27,7 @@ export class NfseQrService {
         nf: String(nf),
         verificacao: String(verificacao),
       });
-      return `${NfseQrService.PREF_SP_URL}?${params.toString()}`;
+      return `${this.prefeituraUrl}?${params.toString()}`;
     }
 
     const raw = Fmt.first(n.Assinatura);

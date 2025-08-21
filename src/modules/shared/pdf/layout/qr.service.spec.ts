@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-// src/shared/pdf/layout/qr.service.spec.ts
+// src/modules/shared/pdf/layout/qr.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { NfseQrService } from './qr.service';
 import type { NfseData } from 'src/modules/nfse/types/nfse.types';
+import { PREFEITURA_URL_TOKEN } from '../providers/prefeitura-url.provider';
 
-// Mock do ValueFormat
 jest.mock('./value-format', () => ({
   ValueFormat: {
     first: jest.fn(),
@@ -37,7 +37,14 @@ describe('NfseQrService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [NfseQrService],
+      providers: [
+        NfseQrService,
+        {
+          provide: PREFEITURA_URL_TOKEN,
+          useValue:
+            'https://nfe.prefeitura.sp.gov.br/contribuinte/notaprint.aspx',
+        },
+      ],
     }).compile();
 
     service = module.get<NfseQrService>(NfseQrService);
@@ -115,7 +122,7 @@ describe('NfseQrService', () => {
 
     it('should return raw signature when decoded signature is empty', () => {
       MockValueFormat.first.mockReturnValue('rawSignature');
-      MockValueFormat.decodeBase64ToUtf8.mockReturnValue('   '); // whitespace only
+      MockValueFormat.decodeBase64ToUtf8.mockReturnValue('   ');
 
       const nfseData = createNfseData({
         ChaveNFe: {
