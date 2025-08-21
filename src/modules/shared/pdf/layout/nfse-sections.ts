@@ -16,12 +16,11 @@ export class NfseSections {
   static readonly NUMBER_BOX_WIDTH = 140;
 
   constructor(
-    @Inject(ASSET_LOADER_TOKEN) private readonly assets: AssetLoader,
+    @Inject(ASSET_LOADER_TOKEN)
+    private readonly assets: AssetLoader,
     @Inject(MUNICIPIO_RESOLVER_TOKEN)
     private readonly municipio: IMunicipioResolver,
-  ) {
-    void this.municipio.preload();
-  }
+  ) {}
 
   async header(n: NfseData): Promise<Content> {
     const numeroNfse = Fmt.first(n.ChaveNFe?.NumeroNFe);

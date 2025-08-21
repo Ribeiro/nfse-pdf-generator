@@ -1,7 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import * as fs from 'fs';
 import * as path from 'path';
 import * as fsp from 'fs/promises';
@@ -10,10 +7,6 @@ import {
   GetObjectCommand,
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
-
-/* =========================================================
- * AssetLoader (images)
- * ======================================================= */
 
 export interface AssetLoader {
   preload(): Promise<void>;
@@ -83,7 +76,6 @@ export class FileSystemAssetLoader implements AssetLoader {
   }
 
   async preload(): Promise<void> {
-    // brand
     for (const file of this.brandCandidates) {
       try {
         if (fs.existsSync(file)) {
@@ -97,7 +89,6 @@ export class FileSystemAssetLoader implements AssetLoader {
       }
     }
 
-    // municípios
     for (const dir of this.municipiosDirs) {
       try {
         if (!fs.existsSync(dir)) continue;
@@ -293,10 +284,6 @@ export async function createAssetLoaderAndPreloadFromEnv(): Promise<AssetLoader>
   return loader;
 }
 
-/* =========================================================
- * MunicipioResolver (codes -> name)
- * ======================================================= */
-
 export type MunicipioMap = Record<string, { nome: string }>;
 
 export interface MunicipioItem {
@@ -450,10 +437,6 @@ export async function createMunicipioResolverAndPreloadFromEnv(): Promise<Munici
   await resolver.preload();
   return resolver;
 }
-
-/* =========================================================
- * Fábrica combinada p/ usar na NfseSections/Layout
- * ======================================================= */
 
 export type NfseInfra = {
   assets: AssetLoader;
