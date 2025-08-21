@@ -375,7 +375,7 @@ describe('NfseSections', () => {
       const row = Array.isArray(table?.body?.[1]) ? table.body[1] : [];
 
       expect(getText(row[0])).toBe('1500,00');
-      expect(getText(row[1])).toBe('1500,00');
+      expect(getText(row[1])).toBe('');
       expect(getText(row[2])).toBe('3,00');
       expect(getText(row[3])).toBe('45,00');
     });

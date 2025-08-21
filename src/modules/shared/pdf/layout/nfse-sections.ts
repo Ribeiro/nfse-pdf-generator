@@ -295,13 +295,20 @@ export class NfseSections {
   valores(n: NfseData): Content {
     const valorServicos = Fmt.first(n.ValorServicos);
     const totalRecebido = Fmt.first(n.ValorTotalRecebido);
+
+    // Verifica se ValorTotalRecebido é válido
+    const isValidTotalRecebido =
+      totalRecebido &&
+      totalRecebido !== 'Não informado' &&
+      totalRecebido.trim() !== '';
+
     const vals = {
       valorServicos,
-      valorTotalRecebido:
-        totalRecebido !== 'Não informado' ? totalRecebido : valorServicos,
+      valorTotalRecebido: isValidTotalRecebido ? totalRecebido : '',
       aliquota: Fmt.first(n.AliquotaServicos),
       valorIss: Fmt.first(n.ValorISS),
     };
+
     const H = (t: string) => ({
       text: t,
       style: 'th',
@@ -316,13 +323,13 @@ export class NfseSections {
         body: [
           [
             H('Valor dos Serviços (R$)'),
-            H('Valor Total Recebido (R$)'),
+            H(isValidTotalRecebido ? 'Valor Total Recebido (R$)' : ''),
             H('Alíquota (%)'),
             H('Valor do ISS (R$)'),
           ],
           [
             { text: vals.valorServicos || '—', style: 'td' },
-            { text: vals.valorTotalRecebido || '—', style: 'td' },
+            { text: vals.valorTotalRecebido || '', style: 'td' },
             { text: vals.aliquota || '—', style: 'td' },
             { text: vals.valorIss || '—', style: 'td' },
           ],
