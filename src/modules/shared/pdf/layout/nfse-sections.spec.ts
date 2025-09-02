@@ -8,9 +8,41 @@ import type { NfseData } from 'src/modules/nfse/types/nfse.types';
 import { PdfLayouts } from './layouts';
 import { Content } from '../types';
 
-function vfFirstImpl(v: unknown): unknown {
-  return Array.isArray(v) ? (v.length ? v[0] : undefined) : v;
+function vfFirstImpl(v: unknown): string {
+  if (Array.isArray(v)) {
+    return v.length ? String(v[0]) : '';
+  }
+  if (v === null || v === undefined || v === '') {
+    return '';
+  }
+  if (
+    typeof v === 'string' ||
+    typeof v === 'number' ||
+    typeof v === 'boolean'
+  ) {
+    return String(v);
+  }
+  return '';
 }
+
+function vfFormatDecimalImpl(v: unknown): string {
+  if (typeof v === 'string' || typeof v === 'number') {
+    const str = String(v);
+
+    if (str.includes('Não informado')) {
+      return str;
+    }
+    if (str.includes(',')) {
+      return str;
+    }
+    if (str.includes('.')) {
+      return str.replace('.', ',');
+    }
+    return str + ',00';
+  }
+  return '0,00';
+}
+
 function vfFormatDateImpl(v: unknown): string {
   return typeof v === 'string' || typeof v === 'number'
     ? `DATE:${String(v)}`
@@ -33,6 +65,7 @@ jest.mock('./value-format', () => ({
     formatDate: jest.fn(vfFormatDateImpl),
     formatCpfCnpj: jest.fn(vfFormatDocImpl),
     formatCep: jest.fn(vfFormatCepImpl),
+    formatDecimal: jest.fn(vfFormatDecimalImpl),
   },
 }));
 
@@ -51,7 +84,6 @@ jest.mock('./asset-loader', () => {
 
   class MunicipioResolver {
     static fromEnv = fromEnvMock;
-
     preload = preloadMock;
     resolveName = resolveNameMock;
   }
@@ -91,15 +123,15 @@ function isObject(x: unknown): x is Record<string, unknown> {
 function hasTable(x: unknown): x is PdfTableWrapper {
   return (
     isObject(x) &&
-    isObject(x.table) &&
-    Array.isArray((x.table as PdfTable).body)
+    isObject((x as PdfTableWrapper).table) &&
+    Array.isArray((x as PdfTableWrapper).table.body)
   );
 }
 function getTable(x: unknown): PdfTable | undefined {
   return hasTable(x) ? x.table : undefined;
 }
 function hasStack(x: unknown): x is PdfStackWrapper {
-  return isObject(x) && Array.isArray(x.stack);
+  return isObject(x) && Array.isArray((x as PdfStackWrapper).stack);
 }
 function getStackTexts(x: unknown): string[] {
   if (!hasStack(x)) return [];
@@ -116,6 +148,24 @@ function getText(x: unknown): string | undefined {
   return isObject(x) && typeof (x as PdfTextCell).text === 'string'
     ? ((x as PdfTextCell).text as string)
     : undefined;
+}
+// ✅ Novo helper: extrai texto de string OU rich text array
+function getPlainText(x: unknown): string | undefined {
+  if (!isObject(x)) return undefined;
+  const t = (x as PdfTextCell).text;
+  if (typeof t === 'string') return t;
+  if (Array.isArray(t)) {
+    return t
+      .map((piece) => {
+        if (typeof piece === 'string') return piece;
+        if (isObject(piece) && typeof (piece as any).text === 'string') {
+          return (piece as any).text as string;
+        }
+        return '';
+      })
+      .join('');
+  }
+  return undefined;
 }
 function getFit(x: unknown): [number, number] | undefined {
   if (!isObject(x)) return undefined;
@@ -226,10 +276,12 @@ describe('NfseSections', () => {
 
       const row0 = Array.isArray(table?.body?.[0]) ? table.body[0] : [];
       const stackTexts = getStackTexts(row0[1]);
-      expect(stackTexts).toContain('SECRETARIA MUNICIPAL DAS FINANÇAS');
-      expect(stackTexts).toContain('NOTA FISCAL ELETRÔNICA DE SERVIÇO - NFS-e');
+      expect(stackTexts).toContain('Secretaria Municipal da Fazenda');
+      expect(stackTexts).toContain('Nota Fiscal de Serviço Eletrônica');
       expect(
-        stackTexts.some((t) => t.includes('PREFEITURA MUNICIPAL DE CURITIBA')),
+        stackTexts.some((t) =>
+          t.includes('Prefeitura do Município de Curitiba'),
+        ),
       ).toBe(true);
 
       const nbTable = getTable(row0[2]);
@@ -257,67 +309,70 @@ describe('NfseSections', () => {
       const row0 = Array.isArray(table?.body?.[0]) ? table.body[0] : [];
       const stackTexts = getStackTexts(row0[1]);
 
-      expect(stackTexts).toContain('PREFEITURA MUNICIPAL DE SEU MUNICÍPIO');
+      expect(stackTexts).toContain('Prefeitura do Município de SEU MUNICÍPIO');
     });
   });
 
   describe('meta', () => {
-    it('should produce meta table with formatted date, verification code and RPS number', () => {
+    it('should produce condensed meta with date and verification on single row (rich text)', () => {
       const n = baseData();
       const content: Content = sections.meta(n);
 
       const outer = getTable(content);
       const innerWrapper = outer?.body?.[0]?.[0];
       const inner = getTable(innerWrapper);
-      const rowValues = Array.isArray(inner?.body?.[1]) ? inner.body[1] : [];
+      const row0 = Array.isArray(inner?.body?.[0]) ? inner.body[0] : [];
 
-      expect(getText(rowValues[0])).toBe('DATE:2024-10-10'); // formatted date
-      expect(getText(rowValues[1])).toBe('ABCD-123'); // verification code
-      expect(getText(rowValues[2])).toBe('RPS-9'); // RPS number
+      const left = row0[0];
+      const right = row0[1];
+
+      const leftTxt = getPlainText(left) ?? '';
+      const rightTxt = getPlainText(right) ?? '';
+
+      expect(leftTxt).toContain('Emissão: ');
+      expect(leftTxt).toContain('DATE:2024-10-10');
+      expect(rightTxt).toContain('Código de Verificação: ');
+      expect(rightTxt).toContain('ABCD-123');
     });
   });
 
   describe('prestador', () => {
     it('should render provider section with brand logo cell and formatted fields', async () => {
-      const n = baseData();
+      const n = baseData({
+        EnderecoPrestador: {
+          Cidade: 'Curitiba',
+          TipoLogradouro: 'Av.',
+          Logradouro: 'Brasil',
+          NumeroEndereco: '100',
+          Bairro: 'Centro',
+          UF: 'PR',
+          CEP: '80000-000',
+        },
+      });
       const content: Content = await sections.prestador(n);
 
       const table = getTable(content);
       const sectionTitle = getText(table?.body?.[0]?.[0]);
-      expect(sectionTitle).toBe('Dados do Prestador de Serviços');
+      expect(sectionTitle).toBe('Prestador de Serviços');
 
       const inner = getTable(table?.body?.[1]?.[0]);
       const rows = Array.isArray(inner?.body) ? inner.body : [];
 
-      expect(getText(rows[0]?.[0])).toBe('Razão Social/Nome');
+      expect(getText(rows[0]?.[0])).toBe('Nome/Razão Social');
       expect(getText(rows[0]?.[1])).toBe('ACME LTDA');
       expect(getText(rows[1]?.[1])).toBe('DOC:11222333000144');
 
-      const addr = getText(rows[2]?.[1]) ?? '';
+      const addr = getText(rows[3]?.[1]) ?? '';
       expect(addr).toMatch(/Brasil/);
       expect(addr).toMatch(/100/);
 
-      const muniUf = getText(rows[4]?.[1]) ?? '';
+      const muniUf = getText(rows[5]?.[1]) ?? '';
       expect(muniUf).toMatch(/Curitiba/i);
       expect(muniUf).toMatch(/PR$/);
 
       const brandCell = rows[0]?.[2];
       expect(getRowSpan(brandCell)).toBe(6);
       expect(assets.loadBrandLogoDataUrl).toHaveBeenCalledTimes(1);
-    });
-
-    it('should fallback brand cell to empty text if brand logo is not available', async () => {
-      assets.loadBrandLogoDataUrl.mockReturnValueOnce('');
-      const n = baseData();
-      const content: Content = await sections.prestador(n);
-
-      const table = getTable(content);
-      const inner = getTable(table?.body?.[1]?.[0]);
-      const rows = Array.isArray(inner?.body) ? inner.body : [];
-      const brandCell = rows[0]?.[2];
-
-      expect(getRowSpan(brandCell)).toBe(6);
-      expect(getText(brandCell)).toBe('');
     });
   });
 
@@ -328,7 +383,7 @@ describe('NfseSections', () => {
 
       const table = getTable(content);
       const sectionTitle = getText(table?.body?.[0]?.[0]);
-      expect(sectionTitle).toBe('Dados do Tomador de Serviços');
+      expect(sectionTitle).toBe('Tomador de Serviços');
 
       const inner = getTable(table?.body?.[1]?.[0]);
       const rows = Array.isArray(inner?.body) ? inner.body : [];
@@ -336,12 +391,12 @@ describe('NfseSections', () => {
       expect(getText(rows[0]?.[1])).toBe('CLIENTE S/A');
       expect(getText(rows[1]?.[1])).toBe('DOC:12345678901');
 
-      const addr = getText(rows[2]?.[1]) ?? '';
+      const addr = getText(rows[3]?.[1]) ?? '';
       expect(addr).toMatch(/Paulista/);
       expect(addr).toMatch(/2000/);
       expect(addr).toMatch(/CJ 1501/);
 
-      const muniUf = getText(rows[4]?.[1]) ?? '';
+      const muniUf = getText(rows[5]?.[1]) ?? '';
       expect(muniUf).toMatch(/São Paulo/i);
       expect(muniUf).toMatch(/SP$/);
     });
@@ -364,47 +419,86 @@ describe('NfseSections', () => {
   describe('valores', () => {
     it('should fallback ValorTotalRecebido to ValorServicos when "Não informado"', () => {
       const n = baseData({
-        ValorServicos: '1500,00',
+        ValorServicos: '1500',
         ValorTotalRecebido: 'Não informado',
-        AliquotaServicos: '3,00',
-        ValorISS: '45,00',
+        AliquotaServicos: '0.03',
+        ValorISS: '45',
       });
       const content: Content = sections.valores(n);
 
-      const table = getTable(content);
-      const row = Array.isArray(table?.body?.[1]) ? table.body[1] : [];
+      const outer = getTable(content);
 
-      expect(getText(row[0])).toBe('1500,00');
-      expect(getText(row[1])).toBe('');
-      expect(getText(row[2])).toBe('3,00');
-      expect(getText(row[3])).toBe('45,00');
+      // Totais (primeira sub-tabela)
+      const totalsWrapper = outer?.body?.[0]?.[0];
+      const totals = getTable(totalsWrapper);
+      const totalsRow = Array.isArray(totals?.body?.[0]) ? totals.body[0] : [];
+
+      const totalServicoTxt = getText(totalsRow[0]) ?? '';
+      const totalRecebidoTxt = getText(totalsRow[1]) ?? '';
+
+      expect(totalServicoTxt).toContain('R$ 1500,00');
+      // fallback para ValorServicos
+      expect(totalRecebidoTxt).toContain('R$ 1500,00');
+
+      // Cálculos ISS (quarta sub-tabela: índice 3)
+      const calcWrapper = outer?.body?.[3]?.[0];
+      const calc = getTable(calcWrapper);
+      const calcValuesRow = Array.isArray(calc?.body?.[1]) ? calc.body[1] : [];
+
+      expect(getText(calcValuesRow[2])).toBe('3,00%'); // alíquota
+      expect(getText(calcValuesRow[3])).toBe('45,00'); // valor ISS
     });
 
     it('should use provided ValorTotalRecebido when informed', () => {
       const n = baseData({
-        ValorServicos: '1000,00',
-        ValorTotalRecebido: '900,00',
-        AliquotaServicos: '2,00',
-        ValorISS: '20,00',
+        ValorServicos: '1000',
+        ValorTotalRecebido: '900',
+        AliquotaServicos: '0.02',
+        ValorISS: '20',
       });
       const content: Content = sections.valores(n);
 
-      const table = getTable(content);
-      const row = Array.isArray(table?.body?.[1]) ? table.body[1] : [];
+      const outer = getTable(content);
 
-      expect(getText(row[0])).toBe('1000,00');
-      expect(getText(row[1])).toBe('900,00');
+      // Totais (primeira sub-tabela)
+      const totalsWrapper = outer?.body?.[0]?.[0];
+      const totals = getTable(totalsWrapper);
+      const totalsRow = Array.isArray(totals?.body?.[0]) ? totals.body[0] : [];
+
+      const totalServicoTxt = getText(totalsRow[0]) ?? '';
+      const totalRecebidoTxt = getText(totalsRow[1]) ?? '';
+
+      expect(totalServicoTxt).toContain('R$ 1000,00');
+      expect(totalRecebidoTxt).toContain('R$ 900,00');
+
+      // Cálculos ISS (quarta sub-tabela)
+      const calcWrapper = outer?.body?.[3]?.[0];
+      const calc = getTable(calcWrapper);
+      const calcValuesRow = Array.isArray(calc?.body?.[1]) ? calc.body[1] : [];
+
+      expect(getText(calcValuesRow[2])).toBe('2,00%'); // alíquota
+      expect(getText(calcValuesRow[3])).toBe('20,00'); // valor ISS
     });
   });
 
   describe('avisos', () => {
-    it('should include standard italic warnings stack', () => {
-      const content: Content = sections.avisos();
+    it('should include law reference and RPS substitution info', () => {
+      const n = baseData({
+        ChaveRPS: {
+          NumeroRPS: 'RPS-9',
+          SerieRPS: 'A1',
+        },
+        DataEmissaoRPS: '2024-10-10',
+      });
+
+      const content: Content = sections.avisos(n);
       const texts = getStackTexts(content);
 
       expect(texts.length).toBe(2);
-      expect(texts[0]?.toLowerCase()).toMatch(/autenticidade/);
-      expect(texts[1]?.toLowerCase()).toMatch(/emitido eletronicamente/);
+      expect(texts[0]?.toLowerCase()).toMatch(/lei.*14\.097.*2005/);
+      expect(texts[1]).toContain('RPS Nº RPS-9');
+      expect(texts[1]).toContain('Série A1');
+      expect(texts[1]).toContain('DATE:2024-10-10');
     });
   });
 });

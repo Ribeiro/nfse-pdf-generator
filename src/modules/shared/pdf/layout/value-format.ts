@@ -74,4 +74,17 @@ export class ValueFormat {
     }
     return b64;
   }
+
+  static formatDecimal(value?: string | number, decimals = 2): string {
+    if (value == null || value === '') return '0,00';
+
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+
+    if (isNaN(num)) return '0,00';
+
+    return num.toLocaleString('pt-BR', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+  }
 }

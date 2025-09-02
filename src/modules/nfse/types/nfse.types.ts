@@ -71,6 +71,21 @@ export interface NfseData {
 
   Discriminacao?: string;
   ValorTotalRecebido?: string;
+
+  ValorINSS?: string;
+  ValorIRRF?: string;
+  ValorCSLL?: string;
+  ValorCOFINS?: string;
+  ValorPIS?: string;
+
+  DiscriminacaoServico?: string;
+
+  ValorDeducoes?: string;
+  BaseCalculo?: string;
+
+  MunicipioPrestacao?: string;
+  NumeroInscricaoObra?: string;
+  ValorAproximadoTributos?: string;
 }
 
 export interface NfseParsed {

@@ -33,9 +33,9 @@ export class NfseSections {
         ? municipioNomeRaw
         : 'SEU MUNICÍPIO';
 
-    const orgName = `PREFEITURA MUNICIPAL DE ${municipioNome.toUpperCase()}`;
-    const deptName = 'SECRETARIA MUNICIPAL DAS FINANÇAS';
-    const docTitle = 'NOTA FISCAL ELETRÔNICA DE SERVIÇO - NFS-e';
+    const orgName = `Prefeitura do Município de ${municipioNome}`;
+    const deptName = 'Secretaria Municipal da Fazenda';
+    const docTitle = 'Nota Fiscal de Serviço Eletrônica';
 
     const logoFitWidth =
       PdfLayouts.headerLogo.colWidth - PdfLayouts.headerLogo.hPadding * 2;
@@ -67,7 +67,7 @@ export class NfseSections {
                 {
                   text: docTitle,
                   style: 'title',
-                  fontSize: 11,
+                  fontSize: 9,
                   lineHeight: 1.1,
                   alignment: 'center',
                   margin: [0, 2, 0, 0] as MarginsTuple,
@@ -79,7 +79,13 @@ export class NfseSections {
               table: {
                 widths: ['*'],
                 body: [
-                  [{ text: 'Número', style: 'boxHeader', alignment: 'center' }],
+                  [
+                    {
+                      text: 'Número da Nota',
+                      style: 'boxHeader',
+                      alignment: 'center',
+                    },
+                  ],
                   [
                     {
                       text: numeroNfse || '—',
@@ -100,33 +106,30 @@ export class NfseSections {
   meta(n: NfseData): Content {
     const dtEmissao = Fmt.formatDate(Fmt.first(n.DataEmissaoNFe));
     const codVerif = Fmt.first(n.ChaveNFe?.CodigoVerificacao);
-    const numRps = Fmt.first(n.ChaveRPS?.NumeroRPS);
+
+    const KV = (k: string, v?: string) => ({
+      text: [{ text: `${k}: `, bold: true }, { text: v && v.trim() ? v : '—' }],
+      style: 'td',
+      fontSize: 8,
+      lineHeight: 0.95,
+      margin: [2, 1, 2, 1],
+      noWrap: false,
+      alignment: 'left',
+    });
 
     return {
-      margin: [0, 0, 0, 10] as MarginsTuple,
+      margin: [0, 0, 0, 6] as MarginsTuple,
       table: {
         widths: ['*'],
         body: [
           [
             {
               table: {
-                widths: ['*', '*', NfseSections.NUMBER_BOX_WIDTH],
+                widths: ['50%', '50%'],
                 body: [
                   [
-                    { text: 'Emissão', style: 'th' },
-                    { text: 'Código de Verificação', style: 'th' },
-                    {
-                      text: 'Número do RPS',
-                      style: 'th',
-                      bold: false,
-                      fontSize: 10,
-                      color: '#555',
-                    },
-                  ],
-                  [
-                    { text: dtEmissao || '—', style: 'td' },
-                    { text: codVerif || '—', style: 'td' },
-                    { text: numRps || '—', style: 'td' },
+                    KV('Emissão', dtEmissao),
+                    KV('Código de Verificação', codVerif),
                   ],
                 ],
               },
@@ -146,12 +149,15 @@ export class NfseSections {
 
     const municipioNome = await this.municipio.resolveName(end.municipio);
     const municipioUF = `${Fmt.first(municipioNome)} / ${Fmt.first(end.uf)}`;
+    const InscricaoMunicipalPrestador = Fmt.first(
+      n.ChaveNFe?.InscricaoPrestador,
+    );
 
     const H = (t: string): TableCell =>
       ({
         text: t,
         style: 'th2',
-        fontSize: 9,
+        fontSize: 8,
         lineHeight: 1.05,
         margin: [0, 1, 0, 1],
         noWrap: true,
@@ -160,7 +166,7 @@ export class NfseSections {
       ({
         text: t,
         style: 'td2',
-        fontSize: 9,
+        fontSize: 8,
         lineHeight: 1.05,
         margin: [0, 1, 0, 1],
       }) as TableCell;
@@ -192,7 +198,7 @@ export class NfseSections {
         body: [
           [
             {
-              text: 'Dados do Prestador de Serviços',
+              text: 'Prestador de Serviços',
               style: 'sectionHeader',
               margin: [0, 2, 0, 2],
             },
@@ -202,8 +208,13 @@ export class NfseSections {
               table: {
                 widths: [140, '*', BRAND_BOX_WIDTH],
                 body: [
-                  [H('Razão Social/Nome'), V(razaoSocial), brandCell],
-                  [H('CNPJ/CPF'), V(Fmt.formatCpfCnpj(doc)), filler],
+                  [H('Nome/Razão Social'), V(razaoSocial), brandCell],
+                  [H('CPF/CNPJ'), V(Fmt.formatCpfCnpj(doc)), filler],
+                  [
+                    H('Inscrição Municipal'),
+                    V(InscricaoMunicipalPrestador),
+                    filler,
+                  ],
                   [H('Endereço'), V(end.endereco), filler],
                   [H('Bairro'), V(end.bairro), filler],
                   [H('Município / UF'), V(municipioUF), filler],
@@ -230,7 +241,7 @@ export class NfseSections {
     const H = (t: string) => ({
       text: t,
       style: 'th2',
-      fontSize: 9,
+      fontSize: 8,
       lineHeight: 1.05,
       margin: [0, 1, 0, 1],
       noWrap: true,
@@ -238,7 +249,7 @@ export class NfseSections {
     const V = (t: string) => ({
       text: t,
       style: 'td2',
-      fontSize: 9,
+      fontSize: 8,
       lineHeight: 1.05,
       margin: [0, 1, 0, 1],
     });
@@ -250,7 +261,7 @@ export class NfseSections {
         body: [
           [
             {
-              text: 'Dados do Tomador de Serviços',
+              text: 'Tomador de Serviços',
               style: 'sectionHeader',
               margin: [0, 2, 0, 2],
             },
@@ -260,8 +271,9 @@ export class NfseSections {
               table: {
                 widths: ['25%', '75%'],
                 body: [
-                  [H('Razão Social/Nome'), V(razao)],
-                  [H('CNPJ/CPF'), V(Fmt.formatCpfCnpj(doc))],
+                  [H('Nome/Razão Social'), V(razao)],
+                  [H('CPF/CNPJ'), V(Fmt.formatCpfCnpj(doc))],
+                  [H('Inscrição Municipal'), V('')],
                   [H('Endereço'), V(end.endereco)],
                   [H('Bairro'), V(end.bairro)],
                   [H('Município / UF'), V(municipioUF)],
@@ -293,53 +305,200 @@ export class NfseSections {
   }
 
   valores(n: NfseData): Content {
-    const valorServicos = Fmt.first(n.ValorServicos);
-    const totalRecebido = Fmt.first(n.ValorTotalRecebido);
+    const valorServicos = Fmt.formatDecimal(n.ValorServicos);
+    const totalRecebido = Fmt.formatDecimal(n.ValorTotalRecebido);
 
-    // Verifica se ValorTotalRecebido é válido
     const isValidTotalRecebido =
       totalRecebido &&
       totalRecebido !== 'Não informado' &&
       totalRecebido.trim() !== '';
 
-    const vals = {
-      valorServicos,
-      valorTotalRecebido: isValidTotalRecebido ? totalRecebido : '',
-      aliquota: Fmt.first(n.AliquotaServicos),
-      valorIss: Fmt.first(n.ValorISS),
-    };
+    const valorINSS = n.ValorINSS ? Fmt.formatDecimal(n.ValorINSS) : '-';
+    const valorIRRF = n.ValorIRRF ? Fmt.formatDecimal(n.ValorIRRF) : '-';
+    const valorCSLL = n.ValorCSLL ? Fmt.formatDecimal(n.ValorCSLL) : '-';
+    const valorCOFINS = n.ValorCOFINS ? Fmt.formatDecimal(n.ValorCOFINS) : '-';
+    const valorPIS = n.ValorPIS ? Fmt.formatDecimal(n.ValorPIS) : '-';
+
+    const codigoServico = Fmt.first(n.CodigoServico);
+    const discriminacaoServico =
+      n.DiscriminacaoServico ??
+      'Fornecimento e administração de vales-refeição, vales-alimentação, vales-transporte e similares';
+
+    const valorDeducoes = Fmt.formatDecimal(n.ValorDeducoes || '0');
+    const baseCalculo = Fmt.formatDecimal(n.BaseCalculo || '0');
+    const aliquota = Fmt.formatDecimal(
+      (Number(n.AliquotaServicos || 0) * 100).toString(),
+    );
+    const valorISS = Fmt.formatDecimal(n.ValorISS || '0');
+    const valorCredito = Fmt.formatDecimal(n.ValorCredito || '0');
+
+    const municipioPrestacao = n.MunicipioPrestacao ?? '-';
+    const numeroInscricaoObra = n.NumeroInscricaoObra ?? '-';
+    const valorAproximadoTributos = n.ValorAproximadoTributos ?? '';
 
     const H = (t: string) => ({
       text: t,
       style: 'th',
-      fontSize: 10,
+      fontSize: 7,
+      lineHeight: 0.8,
       noWrap: true,
+      alignment: 'center',
+      margin: [1, 0.5, 1, 0.5],
+    });
+
+    const V = (t: string) => ({
+      text: t || '—',
+      style: 'td',
+      fontSize: 7,
+      lineHeight: 0.8,
+      alignment: 'center',
+      margin: [1, 0.5, 1, 0.5],
     });
 
     return {
-      margin: [0, 0, 0, 8] as MarginsTuple,
+      margin: [0, 0, 0, 4] as MarginsTuple,
       table: {
-        widths: ['30%', '30%', '20%', '20%'],
+        widths: ['*'],
         body: [
           [
-            H('Valor dos Serviços (R$)'),
-            H(isValidTotalRecebido ? 'Valor Total Recebido (R$)' : ''),
-            H('Alíquota (%)'),
-            H('Valor do ISS (R$)'),
+            {
+              table: {
+                widths: ['50%', '50%'],
+                body: [
+                  [
+                    {
+                      text: `VALOR TOTAL DO SERVIÇO = R$ ${valorServicos || '0,00'}`,
+                      style: 'th',
+                      fontSize: 8.5,
+                      alignment: 'center',
+                      bold: true,
+                      margin: [1, 1, 1, 1],
+                    },
+                    {
+                      text: isValidTotalRecebido
+                        ? `VALOR TOTAL RECEBIDO = R$ ${totalRecebido}`
+                        : `VALOR TOTAL RECEBIDO = R$ ${valorServicos || '0,00'}`,
+                      style: 'th',
+                      fontSize: 8.5,
+                      alignment: 'center',
+                      bold: true,
+                      margin: [1, 1, 1, 1],
+                    },
+                  ],
+                ],
+              },
+              layout: PdfLayouts.gridNoOuter,
+            },
           ],
           [
-            { text: vals.valorServicos || '—', style: 'td' },
-            { text: vals.valorTotalRecebido || '', style: 'td' },
-            { text: vals.aliquota || '—', style: 'td' },
-            { text: vals.valorIss || '—', style: 'td' },
+            {
+              table: {
+                widths: ['20%', '20%', '20%', '20%', '20%'],
+                body: [
+                  [
+                    H('INSS (R$)'),
+                    H('IRRF (R$)'),
+                    H('CSLL (R$)'),
+                    H('COFINS (R$)'),
+                    H('PIS/PASEP (R$)'),
+                  ],
+                  [
+                    V(valorINSS !== '0,00' ? valorINSS : '-'),
+                    V(valorIRRF !== '0,00' ? valorIRRF : '-'),
+                    V(valorCSLL !== '0,00' ? valorCSLL : '-'),
+                    V(valorCOFINS !== '0,00' ? valorCOFINS : '-'),
+                    V(valorPIS !== '0,00' ? valorPIS : '-'),
+                  ],
+                ],
+              },
+              layout: PdfLayouts.gridNoOuter,
+            },
+          ],
+          [
+            {
+              table: {
+                widths: ['*'],
+                body: [
+                  [
+                    {
+                      text: 'Código do Serviço',
+                      style: 'th',
+                      fontSize: 8,
+                      alignment: 'left',
+                      margin: [2, 1, 2, 1],
+                    },
+                  ],
+                  [
+                    {
+                      text:
+                        codigoServico && discriminacaoServico
+                          ? `${codigoServico} - ${discriminacaoServico}`
+                          : codigoServico || '—',
+                      style: 'td',
+                      fontSize: 8,
+                      alignment: 'left',
+                      margin: [2, 1, 2, 1],
+                      bold: true,
+                    },
+                  ],
+                ],
+              },
+              layout: PdfLayouts.gridNoOuter,
+            },
+          ],
+          [
+            {
+              table: {
+                widths: ['20%', '20%', '20%', '20%', '20%'],
+                body: [
+                  [
+                    H('Valor Total das Deduções (R$)'),
+                    H('Base de Cálculo (R$)'),
+                    H('Alíquota (%)'),
+                    H('Valor do ISS (R$)'),
+                    H('Crédito (R$)'),
+                  ],
+                  [
+                    V(valorDeducoes),
+                    V(baseCalculo),
+                    V(aliquota ? `${aliquota}%` : '—'),
+                    V(valorISS),
+                    V(valorCredito),
+                  ],
+                ],
+              },
+              layout: PdfLayouts.gridNoOuter,
+            },
+          ],
+          [
+            {
+              table: {
+                widths: ['33%', '33%', '34%'],
+                body: [
+                  [
+                    H('Município da Prestação do Serviço'),
+                    H('Número Inscrição da Obra'),
+                    H('Valor Aproximado dos Tributos / Fonte'),
+                  ],
+                  [
+                    V(municipioPrestacao),
+                    V(numeroInscricaoObra),
+                    V(valorAproximadoTributos),
+                  ],
+                ],
+              },
+              layout: PdfLayouts.gridNoOuter,
+            },
           ],
         ],
       },
-      layout: PdfLayouts.gridNoOuter,
+      layout: PdfLayouts.outerBox,
     };
   }
-
-  avisos(): Content {
+  avisos(n: NfseData): Content {
+    const nroRps = Fmt.first(n.ChaveRPS?.NumeroRPS);
+    const serieRps = Fmt.first(n.ChaveRPS?.SerieRPS);
+    const dtEmissaoRps = Fmt.formatDate(n.DataEmissaoRPS);
     return {
       margin: [0, 4, 0, 0] as MarginsTuple,
       fontSize: 8.5,
@@ -347,10 +506,10 @@ export class NfseSections {
       italics: true,
       stack: [
         {
-          text: '1 - A autenticidade desta Nota Fiscal pode ser validada no portal do município utilizando o Código de Verificação.',
+          text: '(1) Esta NFS-e foi emitida com respaldo na Lei nº 14.097/2005.',
         },
         {
-          text: '2 - Este documento foi emitido eletronicamente.',
+          text: `(2) Esta NFS-e substitui o RPS Nº ${nroRps} Série ${serieRps}, emitido em ${dtEmissaoRps}`,
           margin: [0, 3, 0, 0] as MarginsTuple,
         },
       ],

@@ -53,7 +53,7 @@ export class NfseLayoutBuilder {
         this.sections.tomador(n),
         Promise.resolve(this.sections.discriminacao(n)),
         Promise.resolve(this.sections.valores(n)),
-        Promise.resolve(this.sections.avisos()),
+        Promise.resolve(this.sections.avisos(n)),
       ]);
 
     return [header, meta, prestador, tomador, discriminacao, valores, avisos];
